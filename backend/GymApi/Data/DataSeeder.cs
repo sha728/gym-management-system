@@ -11,7 +11,9 @@ public static class DataSeeder
         using var scope = services.CreateScope();
 
         var dbContext = scope.ServiceProvider.GetRequiredService<GymDbContext>();
+        var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
         var passwordHasher = new PasswordHasher<User>();
+
         // Create the initial admin account if one does not already exist.
         var adminExists = await dbContext.Users
             .AnyAsync(u => u.Role == "Admin");
@@ -21,6 +23,15 @@ public static class DataSeeder
             return;
         }
 
+        var adminPassword = configuration["Admin:Password"];
+
+        if (string.IsNullOrWhiteSpace(adminPassword))
+        {
+            throw new InvalidOperationException(
+                "Admin password is not configured."
+            );
+        }
+
         var admin = new User
         {
             UserId = Guid.NewGuid(),
@@ -28,8 +39,12 @@ public static class DataSeeder
             Role = "Admin",
             CreatedAt = DateTime.UtcNow
         };
-        // Hash the development password before storing it in the database.
-        admin.PasswordHash = passwordHasher.HashPassword(admin, "Admin@123");
+
+        // Hash the admin password before storing it in the database.
+        admin.PasswordHash = passwordHasher.HashPassword(
+            admin,
+            adminPassword
+        );
 
         dbContext.Users.Add(admin);
         await dbContext.SaveChangesAsync();
