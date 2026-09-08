@@ -4,6 +4,7 @@ using GymApi.DTOs;
 using GymApi.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Collections;
 
 namespace GymApi.Tests;
 
@@ -77,7 +78,6 @@ public class TrainerAvailabilityControllerTests
         var trainer = SeedTrainer(db);
         var controller = new TrainerAvailabilityController(db);
 
-        // Seed an existing availability window on Monday 9-11.
         db.TrainerAvailabilities.Add(new TrainerAvailability
         {
             TrainerAvailabilityId = Guid.NewGuid(),
@@ -88,7 +88,6 @@ public class TrainerAvailabilityControllerTests
         });
         await db.SaveChangesAsync();
 
-        // Attempt to add an overlapping window on the same day.
         var req = new CreateTrainerAvailabilityRequest
         {
             DayOfWeek = (int)DayOfWeek.Monday,
@@ -139,11 +138,60 @@ public class TrainerAvailabilityControllerTests
         var result = await controller.GetAvailability(trainer.TrainerId);
 
         var ok = Assert.IsType<OkObjectResult>(result);
-        Assert.NotNull(ok.Value);
+        var list = Assert.IsAssignableFrom<IEnumerable>(ok.Value);
+        int count = 0;
+        foreach (var _ in list) count++;
+        Assert.Equal(1, count); // Asserts exact count of 1 availability record
     }
 
     [Fact]
-    public async Task DeleteAvailability_ExistingRecord_ReturnsNoContent()
+    public async Task DeleteAvailability_WithActiveSessions_ReturnsConflict()
+    {
+        using var db = CreateDbContext();
+        var trainer = SeedTrainer(db);
+
+        var record = new TrainerAvailability
+        {
+            TrainerAvailabilityId = Guid.NewGuid(),
+            TrainerId = trainer.TrainerId,
+            DayOfWeek = DayOfWeek.Friday,
+            StartTime = new TimeSpan(18, 0, 0),
+            EndTime = new TimeSpan(20, 0, 0)
+        };
+        db.TrainerAvailabilities.Add(record);
+
+        var program = new FitnessProgram { FitnessProgramId = Guid.NewGuid(), Name = "Program", IsActive = true };
+        db.FitnessPrograms.Add(program);
+
+        // Active upcoming session inside Friday 18-20 window
+        var futureFriday = DateTime.SpecifyKind(DateTime.UtcNow.AddDays(7), DateTimeKind.Utc);
+        while (futureFriday.DayOfWeek != DayOfWeek.Friday)
+        {
+            futureFriday = futureFriday.AddDays(1);
+        }
+        var sessionStart = futureFriday.Date.AddHours(18);
+
+        db.Sessions.Add(new Session
+        {
+            SessionId = Guid.NewGuid(),
+            TrainerId = trainer.TrainerId,
+            FitnessProgramId = program.FitnessProgramId,
+            StartTime = sessionStart,
+            EndTime = sessionStart.AddHours(1),
+            IsActive = true,
+            Capacity = 10
+        });
+
+        await db.SaveChangesAsync();
+
+        var controller = new TrainerAvailabilityController(db);
+        var result = await controller.DeleteAvailability(trainer.TrainerId, record.TrainerAvailabilityId);
+
+        Assert.IsType<ConflictObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task DeleteAvailability_NoActiveSessions_ReturnsNoContent()
     {
         using var db = CreateDbContext();
         var trainer = SeedTrainer(db);
@@ -167,7 +215,7 @@ public class TrainerAvailabilityControllerTests
     }
 
     [Fact]
-    public async Task UpdateAvailability_ValidChange_ReturnsOk()
+    public async Task UpdateAvailability_WithSessionOutsideNewWindow_ReturnsConflict()
     {
         using var db = CreateDbContext();
         var trainer = SeedTrainer(db);
@@ -176,24 +224,43 @@ public class TrainerAvailabilityControllerTests
         {
             TrainerAvailabilityId = Guid.NewGuid(),
             TrainerId = trainer.TrainerId,
-            DayOfWeek = DayOfWeek.Monday,
-            StartTime = new TimeSpan(9, 0, 0),
-            EndTime = new TimeSpan(11, 0, 0)
+            DayOfWeek = DayOfWeek.Friday,
+            StartTime = new TimeSpan(18, 0, 0),
+            EndTime = new TimeSpan(20, 0, 0)
         };
         db.TrainerAvailabilities.Add(record);
+
+        var program = new FitnessProgram { FitnessProgramId = Guid.NewGuid(), Name = "Program", IsActive = true };
+        db.FitnessPrograms.Add(program);
+
+        var futureFriday = DateTime.SpecifyKind(DateTime.UtcNow.AddDays(7), DateTimeKind.Utc);
+        while (futureFriday.DayOfWeek != DayOfWeek.Friday)
+        {
+            futureFriday = futureFriday.AddDays(1);
+        }
+        var sessionStart = futureFriday.Date.AddHours(18);
+        db.Sessions.Add(new Session
+        {
+            SessionId = Guid.NewGuid(),
+            TrainerId = trainer.TrainerId,
+            FitnessProgramId = program.FitnessProgramId,
+            StartTime = sessionStart,
+            EndTime = sessionStart.AddHours(1),
+            IsActive = true,
+            Capacity = 10
+        });
         await db.SaveChangesAsync();
 
         var controller = new TrainerAvailabilityController(db);
-
         var req = new UpdateTrainerAvailabilityRequest
         {
-            DayOfWeek = (int)DayOfWeek.Tuesday,
-            StartTime = new TimeSpan(10, 0, 0),
-            EndTime = new TimeSpan(12, 0, 0)
+            DayOfWeek = (int)DayOfWeek.Friday,
+            StartTime = new TimeSpan(19, 0, 0),
+            EndTime = new TimeSpan(20, 0, 0)
         };
 
         var result = await controller.UpdateAvailability(trainer.TrainerId, record.TrainerAvailabilityId, req);
 
-        Assert.IsType<OkObjectResult>(result);
+        Assert.IsType<ConflictObjectResult>(result);
     }
 }

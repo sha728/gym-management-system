@@ -4,6 +4,8 @@ using GymApi.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
+using System.Security.Claims;
 
 namespace GymApi.Controllers;
 
@@ -18,7 +20,7 @@ public class SessionsController : ControllerBase
         _db = db;
     }
 
-    // Members and admins can browse all upcoming or active sessions.
+    // Members can browse active sessions. Admins can pass includeInactive=true to inspect soft-deleted sessions.
     [HttpGet]
     [Authorize]
     public async Task<IActionResult> GetSessions(
@@ -26,10 +28,13 @@ public class SessionsController : ControllerBase
         [FromQuery] Guid? trainerId,
         [FromQuery] bool includeInactive = false)
     {
-        var query = _db.Sessions
-            .Include(s => s.FitnessProgram)
-            .Include(s => s.Trainer)
-            .AsQueryable();
+        // Only admins are allowed to request soft-deleted sessions.
+        if (includeInactive && !User.IsInRole("Admin"))
+        {
+            return Forbid();
+        }
+
+        var query = _db.Sessions.AsQueryable();
 
         if (!includeInactive)
             query = query.Where(s => s.IsActive);
@@ -51,8 +56,8 @@ public class SessionsController : ControllerBase
                 s.IsActive,
                 FitnessProgram = new { s.FitnessProgram.FitnessProgramId, s.FitnessProgram.Name },
                 Trainer = new { s.Trainer.TrainerId, s.Trainer.Name, s.Trainer.Specialization },
-                // Calculate available slots from confirmed bookings at query time.
-                AvailableSlots = s.Capacity - s.Bookings.Count(b => b.Status == "Confirmed")
+                // Calculate remaining open seats based on active confirmed bookings.
+                AvailableSlots = Math.Max(0, s.Capacity - s.Bookings.Count(b => b.Status == BookingStatus.Confirmed))
             })
             .ToListAsync();
 
@@ -64,8 +69,6 @@ public class SessionsController : ControllerBase
     public async Task<IActionResult> GetSession(Guid id)
     {
         var session = await _db.Sessions
-            .Include(s => s.FitnessProgram)
-            .Include(s => s.Trainer)
             .Where(s => s.SessionId == id)
             .Select(s => new
             {
@@ -76,11 +79,12 @@ public class SessionsController : ControllerBase
                 s.IsActive,
                 FitnessProgram = new { s.FitnessProgram.FitnessProgramId, s.FitnessProgram.Name, s.FitnessProgram.Description },
                 Trainer = new { s.Trainer.TrainerId, s.Trainer.Name, s.Trainer.Specialization },
-                AvailableSlots = s.Capacity - s.Bookings.Count(b => b.Status == "Confirmed")
+                AvailableSlots = Math.Max(0, s.Capacity - s.Bookings.Count(b => b.Status == BookingStatus.Confirmed))
             })
             .FirstOrDefaultAsync();
 
-        if (session == null)
+        // Soft-deleted sessions are hidden from regular members.
+        if (session == null || (!session.IsActive && !User.IsInRole("Admin")))
             return NotFound(new { message = "Session not found." });
 
         return Ok(session);
@@ -90,7 +94,25 @@ public class SessionsController : ControllerBase
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> CreateSession([FromBody] CreateSessionRequest req)
     {
-        // Validate that the referenced program and trainer actually exist.
+        // Require explicit UTC dates to prevent timezone mismatch errors when storing in PostgreSQL.
+        if (req.StartTime.Kind != DateTimeKind.Utc || req.EndTime.Kind != DateTimeKind.Utc)
+        {
+            return BadRequest(new { message = "Session StartTime and EndTime must be in UTC timezone." });
+        }
+
+        var startTime = req.StartTime.ToUniversalTime();
+        var endTime = req.EndTime.ToUniversalTime();
+
+        if (startTime >= endTime)
+            return BadRequest(new { message = "Session StartTime must be before EndTime." });
+
+        if (startTime <= DateTime.UtcNow)
+            return BadRequest(new { message = "Session must be scheduled in the future." });
+
+        // Sessions must start and end on the same calendar day to align cleanly with trainer availability.
+        if (startTime.Date != endTime.Date)
+            return BadRequest(new { message = "Sessions cannot cross midnight or span multiple days." });
+
         var programExists = await _db.FitnessPrograms.AnyAsync(p => p.FitnessProgramId == req.FitnessProgramId && p.IsActive);
         if (!programExists)
             return BadRequest(new { message = "Fitness program not found or is inactive." });
@@ -99,17 +121,11 @@ public class SessionsController : ControllerBase
         if (trainer == null || !trainer.IsActive)
             return BadRequest(new { message = "Trainer not found or is inactive." });
 
-        if (req.StartTime >= req.EndTime)
-            return BadRequest(new { message = "Session StartTime must be before EndTime." });
+        var sessionDay = startTime.DayOfWeek;
+        var sessionStart = startTime.TimeOfDay;
+        var sessionEnd = endTime.TimeOfDay;
 
-        if (req.StartTime <= DateTime.UtcNow)
-            return BadRequest(new { message = "Session must be scheduled in the future." });
-
-        // Check that the session falls within at least one of the trainer's availability windows.
-        var sessionDay = req.StartTime.DayOfWeek;
-        var sessionStart = req.StartTime.TimeOfDay;
-        var sessionEnd = req.EndTime.TimeOfDay;
-
+        // Ensure the session fits completely inside one of the trainer's availability windows.
         var trainerIsFree = await _db.TrainerAvailabilities.AnyAsync(a =>
             a.TrainerId == req.TrainerId &&
             a.DayOfWeek == sessionDay &&
@@ -122,31 +138,45 @@ public class SessionsController : ControllerBase
                 message = "The trainer has no availability window that covers this session time."
             });
 
-        // Prevent scheduling the same trainer in two overlapping sessions.
-        var trainerConflict = await _db.Sessions.AnyAsync(s =>
-            s.TrainerId == req.TrainerId &&
-            s.IsActive &&
-            s.StartTime < req.EndTime &&
-            s.EndTime > req.StartTime);
-
-        if (trainerConflict)
-            return Conflict(new { message = "The trainer already has a session scheduled during this time." });
-
-        var session = new Session
+        // Use a serializable transaction when on a real relational DB to prevent concurrent double-booking.
+        try
         {
-            SessionId = Guid.NewGuid(),
-            FitnessProgramId = req.FitnessProgramId,
-            TrainerId = req.TrainerId,
-            StartTime = req.StartTime,
-            EndTime = req.EndTime,
-            Capacity = req.Capacity,
-            IsActive = true
-        };
+            using var transaction = _db.Database.IsRelational()
+                ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable)
+                : null;
 
-        _db.Sessions.Add(session);
-        await _db.SaveChangesAsync();
+            var trainerConflict = await _db.Sessions.AnyAsync(s =>
+                s.TrainerId == req.TrainerId &&
+                s.IsActive &&
+                s.StartTime < endTime &&
+                s.EndTime > startTime);
 
-        return CreatedAtAction(nameof(GetSession), new { id = session.SessionId }, new { session.SessionId });
+            if (trainerConflict)
+                return Conflict(new { message = "The trainer already has a session scheduled during this time." });
+
+            var session = new Session
+            {
+                SessionId = Guid.NewGuid(),
+                FitnessProgramId = req.FitnessProgramId,
+                TrainerId = req.TrainerId,
+                StartTime = startTime,
+                EndTime = endTime,
+                Capacity = req.Capacity,
+                IsActive = true
+            };
+
+            _db.Sessions.Add(session);
+            await _db.SaveChangesAsync();
+
+            if (transaction != null)
+                await transaction.CommitAsync();
+
+            return CreatedAtAction(nameof(GetSession), new { id = session.SessionId }, new { session.SessionId });
+        }
+        catch (Exception ex) when (IsConcurrencyFailure(ex))
+        {
+            return Conflict(new { message = "The trainer schedule changed while this session was being saved. Please try again." });
+        }
     }
 
     [HttpPut("{id:guid}")]
@@ -157,6 +187,24 @@ public class SessionsController : ControllerBase
         if (session == null)
             return NotFound(new { message = "Session not found." });
 
+        if (req.StartTime.Kind != DateTimeKind.Utc || req.EndTime.Kind != DateTimeKind.Utc)
+        {
+            return BadRequest(new { message = "Session StartTime and EndTime must be in UTC timezone." });
+        }
+
+        var startTime = req.StartTime.ToUniversalTime();
+        var endTime = req.EndTime.ToUniversalTime();
+
+        if (startTime >= endTime)
+            return BadRequest(new { message = "Session StartTime must be before EndTime." });
+
+        // Updating a session into the past is not allowed.
+        if (startTime <= DateTime.UtcNow)
+            return BadRequest(new { message = "Session must be scheduled in the future." });
+
+        if (startTime.Date != endTime.Date)
+            return BadRequest(new { message = "Sessions cannot cross midnight or span multiple days." });
+
         var programExists = await _db.FitnessPrograms.AnyAsync(p => p.FitnessProgramId == req.FitnessProgramId && p.IsActive);
         if (!programExists)
             return BadRequest(new { message = "Fitness program not found or is inactive." });
@@ -165,13 +213,16 @@ public class SessionsController : ControllerBase
         if (trainer == null || !trainer.IsActive)
             return BadRequest(new { message = "Trainer not found or is inactive." });
 
-        if (req.StartTime >= req.EndTime)
-            return BadRequest(new { message = "Session StartTime must be before EndTime." });
+        // Ensure new capacity is not lower than members who have already booked this session.
+        var confirmedBookingsCount = await _db.Bookings.CountAsync(b => b.SessionId == id && b.Status == BookingStatus.Confirmed);
+        if (req.Capacity < confirmedBookingsCount)
+        {
+            return Conflict(new { message = $"Cannot reduce capacity below existing confirmed bookings ({confirmedBookingsCount})." });
+        }
 
-        // Availability window check excludes the session being updated.
-        var sessionDay = req.StartTime.DayOfWeek;
-        var sessionStart = req.StartTime.TimeOfDay;
-        var sessionEnd = req.EndTime.TimeOfDay;
+        var sessionDay = startTime.DayOfWeek;
+        var sessionStart = startTime.TimeOfDay;
+        var sessionEnd = endTime.TimeOfDay;
 
         var trainerIsFree = await _db.TrainerAvailabilities.AnyAsync(a =>
             a.TrainerId == req.TrainerId &&
@@ -182,29 +233,44 @@ public class SessionsController : ControllerBase
         if (!trainerIsFree)
             return Conflict(new { message = "The trainer has no availability window that covers this session time." });
 
-        // Schedule conflict check excludes the session being updated.
-        var trainerConflict = await _db.Sessions.AnyAsync(s =>
-            s.TrainerId == req.TrainerId &&
-            s.SessionId != id &&
-            s.IsActive &&
-            s.StartTime < req.EndTime &&
-            s.EndTime > req.StartTime);
+        try
+        {
+            using var transaction = _db.Database.IsRelational()
+                ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable)
+                : null;
 
-        if (trainerConflict)
-            return Conflict(new { message = "The trainer already has a session scheduled during this time." });
+            var trainerConflict = await _db.Sessions.AnyAsync(s =>
+                s.TrainerId == req.TrainerId &&
+                s.SessionId != id &&
+                s.IsActive &&
+                s.StartTime < endTime &&
+                s.EndTime > startTime);
 
-        session.FitnessProgramId = req.FitnessProgramId;
-        session.TrainerId = req.TrainerId;
-        session.StartTime = req.StartTime;
-        session.EndTime = req.EndTime;
-        session.Capacity = req.Capacity;
-        session.IsActive = req.IsActive;
+            if (trainerConflict)
+                return Conflict(new { message = "The trainer already has a session scheduled during this time." });
 
-        await _db.SaveChangesAsync();
-        return Ok(new { session.SessionId });
+            // Note: Updating session details preserves any attached member bookings so members keep their seats.
+            session.FitnessProgramId = req.FitnessProgramId;
+            session.TrainerId = req.TrainerId;
+            session.StartTime = startTime;
+            session.EndTime = endTime;
+            session.Capacity = req.Capacity;
+            session.IsActive = req.IsActive;
+
+            await _db.SaveChangesAsync();
+
+            if (transaction != null)
+                await transaction.CommitAsync();
+
+            return Ok(new { session.SessionId });
+        }
+        catch (Exception ex) when (IsConcurrencyFailure(ex))
+        {
+            return Conflict(new { message = "The trainer schedule changed while this session was being saved. Please try again." });
+        }
     }
 
-    // Soft-delete the session so existing bookings still reference it for history.
+    // Soft-delete the session and cancel its bookings so history remains available without showing cancelled seats as confirmed.
     [HttpDelete("{id:guid}")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteSession(Guid id)
@@ -214,8 +280,26 @@ public class SessionsController : ControllerBase
             return NotFound(new { message = "Session not found." });
 
         session.IsActive = false;
+        var confirmedBookings = await _db.Bookings
+            .Where(b => b.SessionId == id && b.Status == BookingStatus.Confirmed)
+            .ToListAsync();
+
+        foreach (var booking in confirmedBookings)
+            booking.Status = BookingStatus.Cancelled;
+
         await _db.SaveChangesAsync();
 
         return NoContent();
+    }
+
+    private static bool IsConcurrencyFailure(Exception exception)
+    {
+        return exception switch
+        {
+            PostgresException postgresException => postgresException.SqlState is "40001" or "40P01",
+            DbUpdateException { InnerException: PostgresException postgresException } =>
+                postgresException.SqlState is "40001" or "40P01",
+            _ => false
+        };
     }
 }
