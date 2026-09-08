@@ -63,7 +63,7 @@ public class TrainerAvailabilityController : ControllerBase
         if (req.StartTime >= req.EndTime)
             return BadRequest(new { message = "StartTime must be before EndTime." });
 
-        // Prevent overlapping availability windows for the same trainer on the same day.
+        // Preventing overlapping availability for the same trainer on the same day
         var overlap = await _db.TrainerAvailabilities.AnyAsync(a =>
             a.TrainerId == trainerId &&
             a.DayOfWeek == (DayOfWeek)req.DayOfWeek &&

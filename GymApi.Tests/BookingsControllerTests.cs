@@ -1,0 +1,281 @@
+using GymApi.Controllers;
+using GymApi.Data;
+using GymApi.DTOs;
+using GymApi.Models;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
+
+namespace GymApi.Tests;
+
+public class BookingsControllerTests
+{
+    private GymDbContext CreateDbContext()
+    {
+        var options = new DbContextOptionsBuilder<GymDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        return new GymDbContext(options);
+    }
+
+    private void SetUserContext(ControllerBase controller, Guid userId, string role = "Member")
+    {
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
+            new Claim(ClaimTypes.Role, role)
+        };
+        var identity = new ClaimsIdentity(claims, "TestAuth");
+        var claimsPrincipal = new ClaimsPrincipal(identity);
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { User = claimsPrincipal }
+        };
+    }
+
+    private async Task<(User user, Session session)> SeedUserAndSession(
+        GymDbContext db,
+        bool isSessionActive = true,
+        int capacity = 10,
+        int hoursInFuture = 24)
+    {
+        var user = new User
+        {
+            UserId = Guid.NewGuid(),
+            Email = $"user_{Guid.NewGuid()}@example.com",
+            Role = "Member"
+        };
+
+        var trainer = new Trainer
+        {
+            TrainerId = Guid.NewGuid(),
+            Name = "Trainer Bob",
+            Specialization = "Fitness",
+            IsActive = true
+        };
+
+        var program = new FitnessProgram
+        {
+            FitnessProgramId = Guid.NewGuid(),
+            Name = "Cardio Blast",
+            Description = "High energy cardio session",
+            DurationInMinutes = 45,
+            IsActive = true
+        };
+
+        var startTime = DateTime.UtcNow.AddHours(hoursInFuture);
+        var session = new Session
+        {
+            SessionId = Guid.NewGuid(),
+            FitnessProgramId = program.FitnessProgramId,
+            TrainerId = trainer.TrainerId,
+            StartTime = startTime,
+            EndTime = startTime.AddMinutes(45),
+            Capacity = capacity,
+            IsActive = isSessionActive,
+            FitnessProgram = program,
+            Trainer = trainer
+        };
+
+        db.Users.Add(user);
+        db.Trainers.Add(trainer);
+        db.FitnessPrograms.Add(program);
+        db.Sessions.Add(session);
+        await db.SaveChangesAsync();
+
+        return (user, session);
+    }
+
+    [Fact]
+    public async Task CreateBooking_ValidRequest_ReturnsCreated()
+    {
+        using var db = CreateDbContext();
+        var (user, session) = await SeedUserAndSession(db);
+        var controller = new BookingsController(db);
+        SetUserContext(controller, user.UserId);
+
+        var req = new CreateBookingRequest { SessionId = session.SessionId };
+        var result = await controller.CreateBooking(req);
+
+        var created = Assert.IsType<CreatedAtActionResult>(result);
+        var response = Assert.IsType<BookingResponse>(created.Value);
+        Assert.Equal(session.SessionId, response.SessionId);
+        Assert.Equal("Confirmed", response.Status);
+        Assert.Equal(1, db.Bookings.Count());
+    }
+
+    [Fact]
+    public async Task CreateBooking_SessionNotFound_ReturnsNotFound()
+    {
+        using var db = CreateDbContext();
+        var (user, _) = await SeedUserAndSession(db);
+        var controller = new BookingsController(db);
+        SetUserContext(controller, user.UserId);
+
+        var req = new CreateBookingRequest { SessionId = Guid.NewGuid() };
+        var result = await controller.CreateBooking(req);
+
+        Assert.IsType<NotFoundObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task CreateBooking_InactiveSession_ReturnsBadRequest()
+    {
+        using var db = CreateDbContext();
+        var (user, session) = await SeedUserAndSession(db, isSessionActive: false);
+        var controller = new BookingsController(db);
+        SetUserContext(controller, user.UserId);
+
+        var req = new CreateBookingRequest { SessionId = session.SessionId };
+        var result = await controller.CreateBooking(req);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task CreateBooking_PastSession_ReturnsBadRequest()
+    {
+        using var db = CreateDbContext();
+        var (user, session) = await SeedUserAndSession(db, hoursInFuture: -5);
+        var controller = new BookingsController(db);
+        SetUserContext(controller, user.UserId);
+
+        var req = new CreateBookingRequest { SessionId = session.SessionId };
+        var result = await controller.CreateBooking(req);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task CreateBooking_FullCapacity_ReturnsBadRequest()
+    {
+        using var db = CreateDbContext();
+        var (user, session) = await SeedUserAndSession(db, capacity: 1);
+
+        // Add 1 confirmed booking from another member to max out capacity
+        var otherUser = new User { UserId = Guid.NewGuid(), Email = "other@example.com" };
+        db.Users.Add(otherUser);
+        db.Bookings.Add(new Booking
+        {
+            BookingId = Guid.NewGuid(),
+            UserId = otherUser.UserId,
+            SessionId = session.SessionId,
+            BookedAt = DateTime.UtcNow,
+            Status = "Confirmed"
+        });
+        await db.SaveChangesAsync();
+
+        var controller = new BookingsController(db);
+        SetUserContext(controller, user.UserId);
+
+        var req = new CreateBookingRequest { SessionId = session.SessionId };
+        var result = await controller.CreateBooking(req);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task CreateBooking_DuplicateBooking_ReturnsBadRequest()
+    {
+        using var db = CreateDbContext();
+        var (user, session) = await SeedUserAndSession(db);
+
+        // Existing booking for the same user and session
+        db.Bookings.Add(new Booking
+        {
+            BookingId = Guid.NewGuid(),
+            UserId = user.UserId,
+            SessionId = session.SessionId,
+            BookedAt = DateTime.UtcNow,
+            Status = "Confirmed"
+        });
+        await db.SaveChangesAsync();
+
+        var controller = new BookingsController(db);
+        SetUserContext(controller, user.UserId);
+
+        var req = new CreateBookingRequest { SessionId = session.SessionId };
+        var result = await controller.CreateBooking(req);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task GetMyBookings_ReturnsUserBookings()
+    {
+        using var db = CreateDbContext();
+        var (user, session) = await SeedUserAndSession(db);
+
+        db.Bookings.Add(new Booking
+        {
+            BookingId = Guid.NewGuid(),
+            UserId = user.UserId,
+            SessionId = session.SessionId,
+            BookedAt = DateTime.UtcNow,
+            Status = "Confirmed"
+        });
+        await db.SaveChangesAsync();
+
+        var controller = new BookingsController(db);
+        SetUserContext(controller, user.UserId);
+
+        var result = await controller.GetMyBookings();
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var list = Assert.IsAssignableFrom<IEnumerable<BookingResponse>>(ok.Value);
+        Assert.Single(list);
+    }
+
+    [Fact]
+    public async Task CancelBooking_Success_ReturnsOk()
+    {
+        using var db = CreateDbContext();
+        var (user, session) = await SeedUserAndSession(db, hoursInFuture: 10);
+
+        var booking = new Booking
+        {
+            BookingId = Guid.NewGuid(),
+            UserId = user.UserId,
+            SessionId = session.SessionId,
+            BookedAt = DateTime.UtcNow,
+            Status = "Confirmed"
+        };
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+
+        var controller = new BookingsController(db);
+        SetUserContext(controller, user.UserId);
+
+        var result = await controller.CancelBooking(booking.BookingId);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var updatedBooking = await db.Bookings.FindAsync(booking.BookingId);
+        Assert.Equal("Cancelled", updatedBooking!.Status);
+    }
+
+    [Fact]
+    public async Task CancelBooking_PastSession_ReturnsBadRequest()
+    {
+        using var db = CreateDbContext();
+        var (user, session) = await SeedUserAndSession(db, hoursInFuture: -2);
+
+        var booking = new Booking
+        {
+            BookingId = Guid.NewGuid(),
+            UserId = user.UserId,
+            SessionId = session.SessionId,
+            BookedAt = DateTime.UtcNow.AddDays(-1),
+            Status = "Confirmed"
+        };
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+
+        var controller = new BookingsController(db);
+        SetUserContext(controller, user.UserId);
+
+        var result = await controller.CancelBooking(booking.BookingId);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+    }
+}
