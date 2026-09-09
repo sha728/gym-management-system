@@ -2,6 +2,7 @@ using GymApi.Controllers;
 using GymApi.Data;
 using GymApi.DTOs;
 using GymApi.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -254,6 +255,18 @@ public class BookingsControllerTests
         });
 
         Assert.IsType<UnauthorizedObjectResult>(result);
+    }
+
+    [Fact]
+    public void CreateBooking_RequiresMemberRole()
+    {
+        var authorizeAttribute = typeof(BookingsController)
+            .GetMethod(nameof(BookingsController.CreateBooking))!
+            .GetCustomAttributes(typeof(AuthorizeAttribute), inherit: true)
+            .Cast<AuthorizeAttribute>()
+            .Single();
+
+        Assert.Equal("Member", authorizeAttribute.Roles);
     }
 
     [Fact]
