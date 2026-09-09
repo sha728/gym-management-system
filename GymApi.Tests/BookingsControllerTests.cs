@@ -296,6 +296,48 @@ public class BookingsControllerTests
     }
 
     [Fact]
+    public async Task GetMyBookings_DoesNotReturnOtherMembersBookings()
+    {
+        using var db = CreateDbContext();
+        var (user, session) = await SeedUserAndSession(db);
+        var otherUser = new User
+        {
+            UserId = Guid.NewGuid(),
+            Email = "other-booking-member@example.com",
+            Role = "Member"
+        };
+
+        db.Users.Add(otherUser);
+        db.Bookings.AddRange(
+            new Booking
+            {
+                BookingId = Guid.NewGuid(),
+                UserId = user.UserId,
+                SessionId = session.SessionId,
+                BookedAt = DateTime.UtcNow,
+                Status = BookingStatus.Confirmed
+            },
+            new Booking
+            {
+                BookingId = Guid.NewGuid(),
+                UserId = otherUser.UserId,
+                SessionId = session.SessionId,
+                BookedAt = DateTime.UtcNow,
+                Status = BookingStatus.Confirmed
+            });
+        await db.SaveChangesAsync();
+
+        var controller = new BookingsController(db);
+        SetUserContext(controller, user.UserId);
+
+        var result = await controller.GetMyBookings();
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var bookings = Assert.IsAssignableFrom<IEnumerable<BookingResponse>>(ok.Value).ToList();
+        Assert.Single(bookings);
+    }
+
+    [Fact]
     public async Task GetBooking_OtherMember_ReturnsForbid()
     {
         using var db = CreateDbContext();
@@ -376,6 +418,79 @@ public class BookingsControllerTests
         var result = await controller.CancelBooking(booking.BookingId);
 
         Assert.IsType<BadRequestObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task CancelBooking_OtherMember_ReturnsForbid()
+    {
+        using var db = CreateDbContext();
+        var (user, session) = await SeedUserAndSession(db);
+        var otherUser = new User
+        {
+            UserId = Guid.NewGuid(),
+            Email = "other-cancelling-member@example.com",
+            Role = "Member"
+        };
+        var booking = new Booking
+        {
+            BookingId = Guid.NewGuid(),
+            UserId = user.UserId,
+            SessionId = session.SessionId,
+            BookedAt = DateTime.UtcNow,
+            Status = BookingStatus.Confirmed
+        };
+
+        db.Users.Add(otherUser);
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+
+        var controller = new BookingsController(db);
+        SetUserContext(controller, otherUser.UserId);
+
+        var result = await controller.CancelBooking(booking.BookingId);
+
+        Assert.IsType<ForbidResult>(result);
+        Assert.Equal(BookingStatus.Confirmed, booking.Status);
+    }
+
+    [Fact]
+    public async Task CancelBooking_MakesSeatAvailableForAnotherMember()
+    {
+        using var db = CreateDbContext();
+        var (user, session) = await SeedUserAndSession(db, capacity: 1);
+        var otherUser = new User
+        {
+            UserId = Guid.NewGuid(),
+            Email = "replacement-member@example.com",
+            Role = "Member"
+        };
+        var booking = new Booking
+        {
+            BookingId = Guid.NewGuid(),
+            UserId = user.UserId,
+            SessionId = session.SessionId,
+            BookedAt = DateTime.UtcNow,
+            Status = BookingStatus.Confirmed
+        };
+
+        db.Users.Add(otherUser);
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+
+        var cancelController = new BookingsController(db);
+        SetUserContext(cancelController, user.UserId);
+        await cancelController.CancelBooking(booking.BookingId);
+
+        var bookingController = new BookingsController(db);
+        SetUserContext(bookingController, otherUser.UserId);
+        var result = await bookingController.CreateBooking(new CreateBookingRequest
+        {
+            SessionId = session.SessionId
+        });
+
+        Assert.IsType<CreatedAtActionResult>(result);
+        Assert.Equal(2, db.Bookings.Count());
+        Assert.Equal(BookingStatus.Cancelled, booking.Status);
     }
 
     [Fact]
