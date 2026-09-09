@@ -10,7 +10,7 @@ public class Booking
 
     public DateTime BookedAt { get; set; } = DateTime.UtcNow;
 
-    public string Status { get; set; } = "Confirmed";
+    public string Status { get; set; } = BookingStatus.Confirmed;
 
     public User User { get; set; } = null!;
 
