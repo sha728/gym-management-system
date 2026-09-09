@@ -202,6 +202,61 @@ public class BookingsControllerTests
     }
 
     [Fact]
+    public async Task CreateBooking_OverlappingConfirmedBooking_ReturnsConflict()
+    {
+        using var db = CreateDbContext();
+        var (user, session) = await SeedUserAndSession(db);
+        var overlappingSession = new Session
+        {
+            SessionId = Guid.NewGuid(),
+            FitnessProgramId = session.FitnessProgramId,
+            TrainerId = session.TrainerId,
+            StartTime = session.StartTime.AddMinutes(15),
+            EndTime = session.EndTime.AddMinutes(15),
+            Capacity = 10,
+            IsActive = true
+        };
+        db.Sessions.Add(overlappingSession);
+        db.Bookings.Add(new Booking
+        {
+            BookingId = Guid.NewGuid(),
+            UserId = user.UserId,
+            SessionId = session.SessionId,
+            BookedAt = DateTime.UtcNow,
+            Status = "Confirmed"
+        });
+        await db.SaveChangesAsync();
+
+        var controller = new BookingsController(db);
+        SetUserContext(controller, user.UserId);
+
+        var result = await controller.CreateBooking(new CreateBookingRequest
+        {
+            SessionId = overlappingSession.SessionId
+        });
+
+        Assert.IsType<ConflictObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task CreateBooking_InvalidIdentity_ReturnsUnauthorized()
+    {
+        using var db = CreateDbContext();
+        var (_, session) = await SeedUserAndSession(db);
+        var controller = new BookingsController(db);
+        SetUserContext(controller, Guid.Empty);
+        controller.ControllerContext.HttpContext.User = new ClaimsPrincipal(
+            new ClaimsIdentity(new[] { new Claim(ClaimTypes.NameIdentifier, "not-a-guid") }, "TestAuth"));
+
+        var result = await controller.CreateBooking(new CreateBookingRequest
+        {
+            SessionId = session.SessionId
+        });
+
+        Assert.IsType<UnauthorizedObjectResult>(result);
+    }
+
+    [Fact]
     public async Task GetMyBookings_ReturnsUserBookings()
     {
         using var db = CreateDbContext();
@@ -225,6 +280,37 @@ public class BookingsControllerTests
         var ok = Assert.IsType<OkObjectResult>(result);
         var list = Assert.IsAssignableFrom<IEnumerable<BookingResponse>>(ok.Value);
         Assert.Single(list);
+    }
+
+    [Fact]
+    public async Task GetBooking_OtherMember_ReturnsForbid()
+    {
+        using var db = CreateDbContext();
+        var (user, session) = await SeedUserAndSession(db);
+        var otherUser = new User
+        {
+            UserId = Guid.NewGuid(),
+            Email = "other-member@example.com",
+            Role = "Member"
+        };
+        db.Users.Add(otherUser);
+        var booking = new Booking
+        {
+            BookingId = Guid.NewGuid(),
+            UserId = user.UserId,
+            SessionId = session.SessionId,
+            BookedAt = DateTime.UtcNow,
+            Status = "Confirmed"
+        };
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+
+        var controller = new BookingsController(db);
+        SetUserContext(controller, otherUser.UserId);
+
+        var result = await controller.GetBooking(booking.BookingId);
+
+        Assert.IsType<ForbidResult>(result);
     }
 
     [Fact]
@@ -267,6 +353,30 @@ public class BookingsControllerTests
             SessionId = session.SessionId,
             BookedAt = DateTime.UtcNow.AddDays(-1),
             Status = "Confirmed"
+        };
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync();
+
+        var controller = new BookingsController(db);
+        SetUserContext(controller, user.UserId);
+
+        var result = await controller.CancelBooking(booking.BookingId);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task CancelBooking_AlreadyCancelled_ReturnsBadRequest()
+    {
+        using var db = CreateDbContext();
+        var (user, session) = await SeedUserAndSession(db);
+        var booking = new Booking
+        {
+            BookingId = Guid.NewGuid(),
+            UserId = user.UserId,
+            SessionId = session.SessionId,
+            BookedAt = DateTime.UtcNow,
+            Status = "Cancelled"
         };
         db.Bookings.Add(booking);
         await db.SaveChangesAsync();

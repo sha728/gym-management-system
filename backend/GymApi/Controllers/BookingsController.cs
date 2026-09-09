@@ -21,7 +21,7 @@ public class BookingsController : ControllerBase
 
     // Authenticated members can create a booking for an active future session.
     [HttpPost]
-    [Authorize]
+    [Authorize(Roles = "Member")]
     public async Task<IActionResult> CreateBooking([FromBody] CreateBookingRequest req)
     {
         var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
