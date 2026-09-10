@@ -82,13 +82,22 @@ namespace GymApi.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime>("EndDate")
+                    b.Property<DateTime?>("EndDate")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("MembershipPlanId")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime>("StartDate")
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ReviewNote")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("RequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("StartDate")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Status")
@@ -112,6 +121,10 @@ namespace GymApi.Migrations
                     b.Property<Guid>("MembershipPlanId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Benefits")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<int>("DurationInDays")
                         .HasColumnType("integer");

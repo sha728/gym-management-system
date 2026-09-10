@@ -8,11 +8,17 @@ public class Membership
 
     public Guid MembershipPlanId { get; set; }
 
-    public DateTime StartDate { get; set; }
+    public DateTime? StartDate { get; set; }
 
-    public DateTime EndDate { get; set; }
+    public DateTime? EndDate { get; set; }
 
-    public string Status { get; set; } = "Active";
+    public string Status { get; set; } = MembershipStatus.Pending;
+
+    public DateTime RequestedAt { get; set; } = DateTime.UtcNow;
+
+    public DateTime? ReviewedAt { get; set; }
+
+    public string? ReviewNote { get; set; }
 
     public User User { get; set; } = null!;
 
