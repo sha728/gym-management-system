@@ -34,7 +34,8 @@ public class MembershipPlansController : ControllerBase
             query = query.Where(plan => plan.IsActive);
         }
 
-        return Ok(await query.OrderBy(plan => plan.Price).ToListAsync());
+        var plans = await query.OrderBy(plan => plan.Price).ToListAsync();
+        return Ok(plans.Select(ToResponse));
     }
 
     [HttpGet("{id:guid}")]
@@ -47,7 +48,7 @@ public class MembershipPlansController : ControllerBase
             return NotFound(new { message = "Membership plan not found." });
         }
 
-        return Ok(plan);
+        return Ok(ToResponse(plan));
     }
 
     [HttpPost]
@@ -67,7 +68,7 @@ public class MembershipPlansController : ControllerBase
         _db.MembershipPlans.Add(plan);
         await _db.SaveChangesAsync();
 
-        return CreatedAtAction(nameof(GetPlan), new { id = plan.MembershipPlanId }, plan);
+        return CreatedAtAction(nameof(GetPlan), new { id = plan.MembershipPlanId }, ToResponse(plan));
     }
 
     [HttpPut("{id:guid}")]
@@ -87,7 +88,7 @@ public class MembershipPlansController : ControllerBase
         plan.IsActive = request.IsActive;
 
         await _db.SaveChangesAsync();
-        return Ok(plan);
+        return Ok(ToResponse(plan));
     }
 
     [HttpDelete("{id:guid}")]
@@ -105,5 +106,18 @@ public class MembershipPlansController : ControllerBase
         await _db.SaveChangesAsync();
 
         return NoContent();
+    }
+
+    private static MembershipPlanResponse ToResponse(MembershipPlan plan)
+    {
+        return new MembershipPlanResponse
+        {
+            MembershipPlanId = plan.MembershipPlanId,
+            Name = plan.Name,
+            Price = plan.Price,
+            DurationInDays = plan.DurationInDays,
+            Benefits = plan.Benefits,
+            IsActive = plan.IsActive
+        };
     }
 }

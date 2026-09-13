@@ -77,7 +77,7 @@ public class MembershipsControllerTests
         });
 
         var created = Assert.IsType<CreatedAtActionResult>(result);
-        var plan = Assert.IsType<MembershipPlan>(created.Value);
+        var plan = Assert.IsType<MembershipPlanResponse>(created.Value);
         Assert.Equal("Basic", plan.Name);
         Assert.Equal("Gym access during standard hours.", plan.Benefits);
     }
@@ -97,7 +97,7 @@ public class MembershipsControllerTests
 
         var created = Assert.IsType<CreatedAtActionResult>(result);
         var response = Assert.IsType<MembershipResponse>(created.Value);
-        Assert.Equal(MembershipStatus.Pending, response.Status);
+        Assert.Equal(MembershipViewStatus.Pending.ToString(), response.Status);
         Assert.Null(response.StartDate);
         Assert.Null(response.EndDate);
     }
@@ -174,7 +174,7 @@ public class MembershipsControllerTests
 
         var ok = Assert.IsType<OkObjectResult>(result);
         var response = Assert.IsType<MembershipResponse>(ok.Value);
-        Assert.Equal(MembershipStatus.Active, response.Status);
+        Assert.Equal(MembershipViewStatus.Active.ToString(), response.Status);
         Assert.NotNull(response.StartDate);
         Assert.Equal(response.StartDate!.Value.AddDays(plan.DurationInDays), response.EndDate);
     }
@@ -206,7 +206,7 @@ public class MembershipsControllerTests
 
         var ok = Assert.IsType<OkObjectResult>(result);
         var response = Assert.IsType<MembershipResponse>(ok.Value);
-        Assert.Equal(MembershipStatus.Rejected, response.Status);
+        Assert.Equal(MembershipViewStatus.Rejected.ToString(), response.Status);
         Assert.Null(response.StartDate);
     }
 
@@ -248,6 +248,143 @@ public class MembershipsControllerTests
         var memberships = Assert.IsAssignableFrom<IEnumerable<MembershipResponse>>(ok.Value).ToList();
         Assert.Single(memberships);
         Assert.Equal(member.UserId, memberships[0].UserId);
+    }
+
+    [Fact]
+    public async Task ReviewMembership_AlreadyReviewedRequest_ReturnsBadRequest()
+    {
+        using var db = CreateDbContext();
+        var (member, plan) = await SeedMemberAndPlan(db);
+        var membership = new Membership
+        {
+            MembershipId = Guid.NewGuid(),
+            UserId = member.UserId,
+            MembershipPlanId = plan.MembershipPlanId,
+            Status = MembershipStatus.Rejected,
+            ReviewedAt = DateTime.UtcNow
+        };
+        db.Memberships.Add(membership);
+        await db.SaveChangesAsync();
+
+        var controller = new MembershipsController(db);
+        SetUserContext(controller, Guid.NewGuid(), "Admin");
+
+        var result = await controller.ReviewMembership(membership.MembershipId, new ReviewMembershipRequest
+        {
+            Approve = true
+        });
+
+        Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(MembershipStatus.Rejected, membership.Status);
+    }
+
+    [Fact]
+    public async Task ReviewMembership_WhenMemberHasActiveMembership_ReturnsConflict()
+    {
+        using var db = CreateDbContext();
+        var (member, plan) = await SeedMemberAndPlan(db);
+        var activeMembership = new Membership
+        {
+            MembershipId = Guid.NewGuid(),
+            UserId = member.UserId,
+            MembershipPlanId = plan.MembershipPlanId,
+            Status = MembershipStatus.Approved,
+            StartDate = DateTime.UtcNow.Date,
+            EndDate = DateTime.UtcNow.AddDays(30)
+        };
+        var pendingMembership = new Membership
+        {
+            MembershipId = Guid.NewGuid(),
+            UserId = member.UserId,
+            MembershipPlanId = plan.MembershipPlanId,
+            Status = MembershipStatus.Pending
+        };
+        db.Memberships.AddRange(activeMembership, pendingMembership);
+        await db.SaveChangesAsync();
+
+        var controller = new MembershipsController(db);
+        SetUserContext(controller, Guid.NewGuid(), "Admin");
+
+        var result = await controller.ReviewMembership(pendingMembership.MembershipId, new ReviewMembershipRequest
+        {
+            Approve = true
+        });
+
+        Assert.IsType<ConflictObjectResult>(result);
+        Assert.Equal(MembershipStatus.Pending, pendingMembership.Status);
+    }
+
+    [Fact]
+    public async Task ExpiredMembership_IsShownAsExpiredAndAllowsNewRequest()
+    {
+        using var db = CreateDbContext();
+        var (member, plan) = await SeedMemberAndPlan(db);
+        db.Memberships.Add(new Membership
+        {
+            MembershipId = Guid.NewGuid(),
+            UserId = member.UserId,
+            MembershipPlanId = plan.MembershipPlanId,
+            Status = MembershipStatus.Approved,
+            StartDate = DateTime.UtcNow.AddDays(-31),
+            EndDate = DateTime.UtcNow.AddDays(-1),
+            PlanName = plan.Name,
+            PlanPrice = plan.Price,
+            PlanDurationInDays = plan.DurationInDays,
+            PlanBenefits = plan.Benefits
+        });
+        await db.SaveChangesAsync();
+
+        var controller = new MembershipsController(db);
+        SetUserContext(controller, member.UserId, "Member");
+
+        var historyResult = await controller.GetMyMemberships();
+        var history = Assert.IsAssignableFrom<IEnumerable<MembershipResponse>>(
+            Assert.IsType<OkObjectResult>(historyResult).Value).ToList();
+        Assert.Equal(MembershipViewStatus.Expired.ToString(), history.Single().Status);
+
+        var requestResult = await controller.RequestMembership(new CreateMembershipRequest
+        {
+            MembershipPlanId = plan.MembershipPlanId
+        });
+
+        Assert.IsType<CreatedAtActionResult>(requestResult);
+    }
+
+    [Fact]
+    public async Task ApprovedMembership_UsesPlanTermsFromApprovalDate()
+    {
+        using var db = CreateDbContext();
+        var (member, plan) = await SeedMemberAndPlan(db);
+        var membership = new Membership
+        {
+            MembershipId = Guid.NewGuid(),
+            UserId = member.UserId,
+            MembershipPlanId = plan.MembershipPlanId,
+            Status = MembershipStatus.Pending
+        };
+        db.Memberships.Add(membership);
+        await db.SaveChangesAsync();
+
+        var adminController = new MembershipsController(db);
+        SetUserContext(adminController, Guid.NewGuid(), "Admin");
+        await adminController.ReviewMembership(membership.MembershipId, new ReviewMembershipRequest { Approve = true });
+
+        plan.Name = "Premium Plus";
+        plan.Price = 2999m;
+        plan.DurationInDays = 180;
+        plan.Benefits = "Updated benefits";
+        await db.SaveChangesAsync();
+
+        var memberController = new MembershipsController(db);
+        SetUserContext(memberController, member.UserId, "Member");
+        var result = await memberController.GetMyMemberships();
+        var response = Assert.IsAssignableFrom<IEnumerable<MembershipResponse>>(
+            Assert.IsType<OkObjectResult>(result).Value).Single();
+
+        Assert.Equal("Premium", response.PlanName);
+        Assert.Equal(1999m, response.Price);
+        Assert.Equal(90, response.DurationInDays);
+        Assert.Equal("Unlimited group classes and one trainer consultation.", response.Benefits);
     }
 
     [Fact]

@@ -20,6 +20,59 @@ public class BookingsController : ControllerBase
         _db = db;
     }
 
+    [HttpGet]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> GetAllBookings(
+        [FromQuery] string? status = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
+    {
+        if (page < 1 || pageSize is < 1 or > 100)
+        {
+            return BadRequest(new { message = "Page must be at least 1 and pageSize must be between 1 and 100." });
+        }
+
+        if (status is not null && status is not BookingStatus.Confirmed and not BookingStatus.Cancelled)
+        {
+            return BadRequest(new { message = "Status must be Confirmed or Cancelled." });
+        }
+
+        var query = _db.Bookings
+            .Include(booking => booking.User)
+            .Include(booking => booking.Session)
+                .ThenInclude(session => session.FitnessProgram)
+            .Include(booking => booking.Session)
+                .ThenInclude(session => session.Trainer)
+            .AsQueryable();
+
+        if (status is not null)
+        {
+            query = query.Where(booking => booking.Status == status);
+        }
+
+        var totalCount = await query.CountAsync();
+        var bookings = await query
+            .OrderByDescending(booking => booking.BookedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(booking => new AdminBookingResponse
+            {
+                BookingId = booking.BookingId,
+                UserId = booking.UserId,
+                MemberEmail = booking.User.Email,
+                SessionId = booking.SessionId,
+                ProgramTitle = booking.Session.FitnessProgram.Name,
+                TrainerName = booking.Session.Trainer.Name,
+                StartTime = booking.Session.StartTime,
+                EndTime = booking.Session.EndTime,
+                BookedAt = booking.BookedAt,
+                Status = booking.Status
+            })
+            .ToListAsync();
+
+        return Ok(new { items = bookings, page, pageSize, totalCount });
+    }
+
     // Authenticated members can create a booking for an active future session.
     [HttpPost]
     [Authorize(Roles = "Member")]

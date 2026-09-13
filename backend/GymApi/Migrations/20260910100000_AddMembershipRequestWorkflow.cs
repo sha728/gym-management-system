@@ -2,6 +2,7 @@ using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 using GymApi.Data;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+
 #nullable disable
 
 namespace GymApi.Migrations
