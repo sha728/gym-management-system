@@ -39,6 +39,16 @@ public class GymDbContext : DbContext
             .HasForeignKey(m => m.MembershipPlanId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        modelBuilder.Entity<Membership>()
+            .Property(m => m.Status)
+            .HasConversion<string>();
+
+        // The application checks first, but the database is the final guard against double-click requests.
+        modelBuilder.Entity<Membership>()
+            .HasIndex(m => m.UserId)
+            .HasFilter("\"Status\" = 'Pending'")
+            .IsUnique();
+
         modelBuilder.Entity<TrainerAvailability>()
             .HasOne(a => a.Trainer)
             .WithMany(t => t.Availabilities)
