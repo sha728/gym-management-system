@@ -2,6 +2,9 @@
 **/bin/
 **/obj/
 
+# Local dev settings with real credentials — use appsettings.Development.json.example as a template
+backend/GymApi/appsettings.Development.json
+
 # Node
 **/node_modules/
 **/dist/
