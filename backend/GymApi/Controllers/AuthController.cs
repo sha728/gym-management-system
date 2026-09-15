@@ -44,6 +44,7 @@ public class AuthController : ControllerBase
         var user = new User
         {
             UserId = Guid.NewGuid(),
+            Name = request.Name,
             Email = request.Email,
             Role = "Member",
             CreatedAt = DateTime.UtcNow
