@@ -65,7 +65,6 @@ export const programsApi = {
   delete: (id) => api.delete(`/fitnessprograms/${id}`),
 };
 
-// ---- Trainers ----
 export const trainersApi = {
   getAll: (showAll = false) =>
     api.get(`/trainers${showAll ? '?showAll=true' : ''}`),

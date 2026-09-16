@@ -24,18 +24,15 @@ export default function App() {
     <AuthProvider>
       <Router>
         <Routes>
-          {/* Public */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
-          {/* Member */}
           <Route path="/programs"    element={<ProtectedRoute role="Member"><Programs /></ProtectedRoute>} />
           <Route path="/trainers"    element={<ProtectedRoute role="Member"><Trainers /></ProtectedRoute>} />
           <Route path="/sessions"    element={<ProtectedRoute role="Member"><Sessions /></ProtectedRoute>} />
           <Route path="/my-bookings" element={<ProtectedRoute role="Member"><MyBookings /></ProtectedRoute>} />
           <Route path="/membership"  element={<ProtectedRoute role="Member"><Membership /></ProtectedRoute>} />
 
-          {/* Admin — Programs, Trainers, Sessions reuse the same shared pages (admin-aware) */}
           <Route path="/admin/dashboard"   element={<ProtectedRoute role="Admin"><AdminDashboard /></ProtectedRoute>} />
           <Route path="/admin/programs"    element={<ProtectedRoute role="Admin"><Programs /></ProtectedRoute>} />
           <Route path="/admin/trainers"    element={<ProtectedRoute role="Admin"><Trainers /></ProtectedRoute>} />
@@ -44,7 +41,6 @@ export default function App() {
           <Route path="/admin/bookings"    element={<ProtectedRoute role="Admin"><AdminBookings /></ProtectedRoute>} />
           <Route path="/admin/memberships" element={<ProtectedRoute role="Admin"><AdminMemberships /></ProtectedRoute>} />
 
-          {/* Default */}
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>

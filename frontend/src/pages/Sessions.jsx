@@ -40,11 +40,7 @@ function SessionModal({ session, programs, trainers, onClose, onSave }) {
     setError('');
     setSaving(true);
     try {
-      const payload = {
-        ...form,
-        startTime: toUtc(form.startTime),
-        endTime: toUtc(form.endTime),
-      };
+      const payload = { ...form, startTime: toUtc(form.startTime), endTime: toUtc(form.endTime) };
       if (session) {
         await sessionsApi.update(session.sessionId, payload);
       } else {
@@ -62,46 +58,59 @@ function SessionModal({ session, programs, trainers, onClose, onSave }) {
     <div className="gym-modal-backdrop">
       <div className="gym-modal gym-modal-lg">
         <div className="gym-modal-header">
-          <h5>{session ? 'Edit Session' : 'New Session'}</h5>
-          <button className="gym-modal-close" onClick={onClose}>&#x2715;</button>
+          <span className="gym-modal-title">{session ? 'Edit Session' : 'New Session'}</span>
+          <button className="gym-modal-close" onClick={onClose} aria-label="Close">&#x2715;</button>
         </div>
-        {error && <div className="gym-alert-error">{error}</div>}
+        {error && <div className="gym-alert-error mb-3">{error}</div>}
         <form onSubmit={handleSubmit}>
           <div className="row g-3">
             <div className="col-md-6">
               <label className="gym-label">Program</label>
-              <select className="gym-input" value={form.fitnessProgramId} onChange={e => setForm({ ...form, fitnessProgramId: e.target.value })} required>
-                {programs.map(p => <option key={p.fitnessProgramId} value={p.fitnessProgramId}>{p.name}</option>)}
+              <select className="gym-input" value={form.fitnessProgramId}
+                onChange={e => setForm({ ...form, fitnessProgramId: e.target.value })} required>
+                {programs.map(p => (
+                  <option key={p.fitnessProgramId} value={p.fitnessProgramId}>{p.name}</option>
+                ))}
               </select>
             </div>
             <div className="col-md-6">
               <label className="gym-label">Trainer</label>
-              <select className="gym-input" value={form.trainerId} onChange={e => setForm({ ...form, trainerId: e.target.value })} required>
-                {trainers.map(t => <option key={t.trainerId} value={t.trainerId}>{t.name}</option>)}
+              <select className="gym-input" value={form.trainerId}
+                onChange={e => setForm({ ...form, trainerId: e.target.value })} required>
+                {trainers.map(t => (
+                  <option key={t.trainerId} value={t.trainerId}>{t.name}</option>
+                ))}
               </select>
             </div>
             <div className="col-md-6">
               <label className="gym-label">Start Time (local)</label>
-              <input className="gym-input" type="datetime-local" value={form.startTime} onChange={e => setForm({ ...form, startTime: e.target.value })} required />
+              <input className="gym-input" type="datetime-local" value={form.startTime}
+                onChange={e => setForm({ ...form, startTime: e.target.value })} required />
             </div>
             <div className="col-md-6">
               <label className="gym-label">End Time (local)</label>
-              <input className="gym-input" type="datetime-local" value={form.endTime} onChange={e => setForm({ ...form, endTime: e.target.value })} required />
+              <input className="gym-input" type="datetime-local" value={form.endTime}
+                onChange={e => setForm({ ...form, endTime: e.target.value })} required />
             </div>
             <div className="col-md-6">
               <label className="gym-label">Capacity</label>
-              <input className="gym-input" type="number" min={1} value={form.capacity} onChange={e => setForm({ ...form, capacity: Number(e.target.value) })} required />
+              <input className="gym-input" type="number" min={1} value={form.capacity}
+                onChange={e => setForm({ ...form, capacity: Number(e.target.value) })} required />
             </div>
             {session && (
-              <div className="col-md-6 d-flex align-items-end pb-1 gap-2">
-                <input type="checkbox" id="sessActive" checked={form.isActive} onChange={e => setForm({ ...form, isActive: e.target.checked })} />
+              <div className="col-md-6 d-flex align-items-end pb-2 gap-2">
+                <input type="checkbox" id="sessActive" className="form-check-input mt-0"
+                  checked={form.isActive}
+                  onChange={e => setForm({ ...form, isActive: e.target.checked })} />
                 <label htmlFor="sessActive" className="gym-label mb-0">Active</label>
               </div>
             )}
           </div>
-          <div className="d-flex gap-2 justify-content-end mt-4">
-            <button type="button" className="btn btn-gym-outline" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-gym" disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
+          <div className="d-flex gap-2 justify-content-end pt-3 mt-1">
+            <button type="button" className="btn-gym-ghost btn-sm" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn-gym btn-sm" disabled={saving}>
+              {saving ? 'Saving...' : 'Save Session'}
+            </button>
           </div>
         </form>
       </div>
@@ -113,16 +122,16 @@ export default function Sessions() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
 
-  const [sessions, setSessions] = useState([]);
-  const [programs, setPrograms] = useState([]);
-  const [trainers, setTrainers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [sessions, setSessions]         = useState([]);
+  const [programs, setPrograms]         = useState([]);
+  const [trainers, setTrainers]         = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState('');
   const [filterProgram, setFilterProgram] = useState('');
   const [filterTrainer, setFilterTrainer] = useState('');
-  const [modal, setModal] = useState(null);
-  const [bookingId, setBookingId] = useState(null);
-  const [bookingMsg, setBookingMsg] = useState('');
+  const [modal, setModal]               = useState(null);
+  const [bookingId, setBookingId]       = useState(null);
+  const [bookingMsg, setBookingMsg]     = useState({ text: '', ok: false });
 
   const load = async () => {
     setLoading(true);
@@ -133,9 +142,7 @@ export default function Sessions() {
         programsApi.getAll(isAdmin),
         trainersApi.getAll(isAdmin),
       ]);
-      setSessions(s);
-      setPrograms(p);
-      setTrainers(t);
+      setSessions(s); setPrograms(p); setTrainers(t);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -147,13 +154,13 @@ export default function Sessions() {
 
   const handleBook = async (sessionId) => {
     setBookingId(sessionId);
-    setBookingMsg('');
+    setBookingMsg({ text: '', ok: false });
     try {
       await bookingsApi.create(sessionId);
-      setBookingMsg('Booking confirmed.');
+      setBookingMsg({ text: 'Booking confirmed.', ok: true });
       load();
     } catch (err) {
-      setBookingMsg(err.message);
+      setBookingMsg({ text: err.message, ok: false });
     } finally {
       setBookingId(null);
     }
@@ -161,12 +168,8 @@ export default function Sessions() {
 
   const handleDelete = async (id) => {
     if (!confirm('Deactivate this session? All confirmed bookings will be cancelled.')) return;
-    try {
-      await sessionsApi.delete(id);
-      load();
-    } catch (err) {
-      alert(err.message);
-    }
+    try { await sessionsApi.delete(id); load(); }
+    catch (err) { alert(err.message); }
   };
 
   const filtered = sessions.filter(s => {
@@ -177,93 +180,110 @@ export default function Sessions() {
 
   return (
     <Layout>
-      <div className="d-flex align-items-center justify-content-between mb-4">
-        <h1 className="gym-page-title">Sessions</h1>
+      <div className="gym-page-header d-flex align-items-center justify-content-between">
+        <div>
+          <h1 className="gym-page-title">Sessions</h1>
+          {!loading && (
+            <p className="gym-page-subtitle">{filtered.length} session{filtered.length !== 1 ? 's' : ''}</p>
+          )}
+        </div>
         {isAdmin && (
-          <button className="btn btn-gym" onClick={() => setModal('create')}>
-            + New Session
+          <button className="btn-gym" onClick={() => setModal('create')}>+ New Session</button>
+        )}
+      </div>
+
+      <div className="gym-filter-bar">
+        <select className="gym-input" value={filterProgram}
+          onChange={e => setFilterProgram(e.target.value)}
+          style={{ maxWidth: 200 }}>
+          <option value="">All Programs</option>
+          {programs.map(p => (
+            <option key={p.fitnessProgramId} value={p.fitnessProgramId}>{p.name}</option>
+          ))}
+        </select>
+        <select className="gym-input" value={filterTrainer}
+          onChange={e => setFilterTrainer(e.target.value)}
+          style={{ maxWidth: 200 }}>
+          <option value="">All Trainers</option>
+          {trainers.map(t => (
+            <option key={t.trainerId} value={t.trainerId}>{t.name}</option>
+          ))}
+        </select>
+        {(filterProgram || filterTrainer) && (
+          <button className="btn-gym-ghost btn-sm"
+            onClick={() => { setFilterProgram(''); setFilterTrainer(''); }}>
+            Clear filters
           </button>
         )}
       </div>
 
-      {/* Filters */}
-      <div className="row g-2 mb-4">
-        <div className="col-auto">
-          <select className="gym-input" value={filterProgram} onChange={e => setFilterProgram(e.target.value)} style={{ minWidth: 180 }}>
-            <option value="">All Programs</option>
-            {programs.map(p => <option key={p.fitnessProgramId} value={p.fitnessProgramId}>{p.name}</option>)}
-          </select>
-        </div>
-        <div className="col-auto">
-          <select className="gym-input" value={filterTrainer} onChange={e => setFilterTrainer(e.target.value)} style={{ minWidth: 180 }}>
-            <option value="">All Trainers</option>
-            {trainers.map(t => <option key={t.trainerId} value={t.trainerId}>{t.name}</option>)}
-          </select>
-        </div>
-        {(filterProgram || filterTrainer) && (
-          <div className="col-auto">
-            <button className="btn btn-gym-outline btn-sm" onClick={() => { setFilterProgram(''); setFilterTrainer(''); }}>Clear</button>
-          </div>
-        )}
-      </div>
-
-      {bookingMsg && (
-        <div className={`mb-3 ${bookingMsg === 'Booking confirmed.' ? 'gym-alert-success' : 'gym-alert-error'}`}>
-          {bookingMsg}
+      {bookingMsg.text && (
+        <div className={`mb-3 ${bookingMsg.ok ? 'gym-alert-success' : 'gym-alert-error'}`}>
+          {bookingMsg.text}
         </div>
       )}
       {error && <div className="gym-alert-error mb-3">{error}</div>}
 
       {loading ? (
-        <div className="gym-loading">Loading...</div>
+        <div className="gym-loading">Loading sessions</div>
       ) : filtered.length === 0 ? (
-        <p className="text-muted">No sessions found.</p>
+        <div className="gym-empty">No sessions found.</div>
       ) : (
         <div className="table-responsive">
-          <table className="gym-table">
+          <table className="table table-hover align-middle">
             <thead>
               <tr>
                 <th>Program</th>
                 <th>Trainer</th>
                 <th>Start</th>
                 <th>End</th>
-                <th>Slots</th>
+                <th>Availability</th>
                 {isAdmin && <th>Status</th>}
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(s => (
-                <tr key={s.sessionId} className={!s.isActive ? 'gym-row-inactive' : ''}>
-                  <td>{s.fitnessProgram.name}</td>
-                  <td>{s.trainer.name}</td>
-                  <td>{formatDate(s.startTime)}</td>
-                  <td>{formatDate(s.endTime)}</td>
+                <tr key={s.sessionId} style={!s.isActive ? { opacity: 0.45 } : {}}>
+                  <td className="fw-600">{s.fitnessProgram.name}</td>
+                  <td className="text-muted">{s.trainer.name}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(s.startTime)}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(s.endTime)}</td>
                   <td>
-                    <span className={s.availableSlots === 0 ? 'gym-badge-full' : 'gym-badge-open'}>
-                      {s.availableSlots} / {s.capacity}
-                    </span>
+                    {s.availableSlots === 0
+                      ? <span className="gym-badge gym-badge-full">Full</span>
+                      : <span className="gym-badge gym-badge-open">{s.availableSlots} / {s.capacity} open</span>
+                    }
                   </td>
                   {isAdmin && (
-                    <td>{s.isActive ? <span className="gym-badge-active">Active</span> : <span className="gym-badge-inactive">Inactive</span>}</td>
+                    <td>
+                      {s.isActive
+                        ? <span className="gym-badge gym-badge-active">Active</span>
+                        : <span className="gym-badge gym-badge-inactive">Inactive</span>
+                      }
+                    </td>
                   )}
                   <td>
                     {isAdmin ? (
                       <div className="d-flex gap-2">
-                        <button className="btn btn-gym-outline btn-sm" onClick={() => setModal(s)}>Edit</button>
-                        {s.isActive && <button className="btn btn-gym-danger btn-sm" onClick={() => handleDelete(s.sessionId)}>Delete</button>}
+                        <button className="btn-gym-outline btn-sm"
+                          onClick={() => setModal(s)}>Edit</button>
+                        {s.isActive && (
+                          <button className="btn-gym-danger btn-sm"
+                            onClick={() => handleDelete(s.sessionId)}>Delete</button>
+                        )}
                       </div>
                     ) : (
                       s.isActive && s.availableSlots > 0 && new Date(s.startTime) > new Date() ? (
                         <button
-                          className="btn btn-gym btn-sm"
+                          className="btn-gym btn-sm"
                           disabled={bookingId === s.sessionId}
                           onClick={() => handleBook(s.sessionId)}
                         >
-                          {bookingId === s.sessionId ? '...' : 'Book'}
+                          {bookingId === s.sessionId ? 'Booking...' : 'Book'}
                         </button>
                       ) : (
-                        <span className="text-muted small">
+                        <span className="text-muted" style={{ fontSize: '0.78rem' }}>
                           {s.availableSlots === 0 ? 'Full' : 'Unavailable'}
                         </span>
                       )

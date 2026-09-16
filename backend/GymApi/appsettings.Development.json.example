@@ -9,9 +9,9 @@
     "DefaultConnection": "Host=localhost;Port=5432;Database=gym_management;Username=postgres;Password=postgres"
   },
   "Jwt": {
-    "Key": "REPLACE_WITH_YOUR_JWT_KEY_MIN_32_CHARS"
+    "Key": "your-jwt-signing-key-at-least-32-characters"
   },
   "Admin": {
-    "Password": "REPLACE_WITH_YOUR_ADMIN_PASSWORD"
+    "Password": "your-admin-password"
   }
 }

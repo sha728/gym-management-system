@@ -32,32 +32,60 @@ function TrainerModal({ trainer, onClose, onSave }) {
     <div className="gym-modal-backdrop">
       <div className="gym-modal">
         <div className="gym-modal-header">
-          <h5>{trainer ? 'Edit Trainer' : 'New Trainer'}</h5>
-          <button className="gym-modal-close" onClick={onClose}>&#x2715;</button>
+          <span className="gym-modal-title">{trainer ? 'Edit Trainer' : 'New Trainer'}</span>
+          <button className="gym-modal-close" onClick={onClose} aria-label="Close">&#x2715;</button>
         </div>
-        {error && <div className="gym-alert-error">{error}</div>}
+
+        {error && <div className="gym-alert-error mb-3">{error}</div>}
+
         <form onSubmit={handleSubmit}>
           <div className="mb-3">
             <label className="gym-label">Name</label>
-            <input className="gym-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required />
+            <input
+              className="gym-input"
+              value={form.name}
+              onChange={e => setForm({ ...form, name: e.target.value })}
+              placeholder="e.g. Alex Johnson"
+              required
+            />
           </div>
           <div className="mb-3">
             <label className="gym-label">Specialization</label>
-            <input className="gym-input" value={form.specialization} onChange={e => setForm({ ...form, specialization: e.target.value })} required />
+            <input
+              className="gym-input"
+              value={form.specialization}
+              onChange={e => setForm({ ...form, specialization: e.target.value })}
+              placeholder="e.g. Strength & Conditioning"
+              required
+            />
           </div>
           <div className="mb-3">
             <label className="gym-label">Bio</label>
-            <textarea className="gym-input" rows={3} value={form.bio || ''} onChange={e => setForm({ ...form, bio: e.target.value })} />
+            <textarea
+              className="gym-input"
+              rows={3}
+              value={form.bio || ''}
+              onChange={e => setForm({ ...form, bio: e.target.value })}
+              placeholder="Short background about the trainer"
+            />
           </div>
           {trainer && (
-            <div className="mb-3 d-flex align-items-center gap-2">
-              <input type="checkbox" id="trainerActive" checked={form.isActive} onChange={e => setForm({ ...form, isActive: e.target.checked })} />
+            <div className="mb-4 d-flex align-items-center gap-2">
+              <input
+                type="checkbox"
+                id="trainerActive"
+                className="form-check-input mt-0"
+                checked={form.isActive}
+                onChange={e => setForm({ ...form, isActive: e.target.checked })}
+              />
               <label htmlFor="trainerActive" className="gym-label mb-0">Active</label>
             </div>
           )}
-          <div className="d-flex gap-2 justify-content-end mt-3">
-            <button type="button" className="btn btn-gym-outline" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-gym" disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
+          <div className="d-flex gap-2 justify-content-end pt-2">
+            <button type="button" className="btn-gym-ghost btn-sm" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn-gym btn-sm" disabled={saving}>
+              {saving ? 'Saving...' : 'Save Trainer'}
+            </button>
           </div>
         </form>
       </div>
@@ -79,8 +107,7 @@ export default function Trainers() {
     setLoading(true);
     setError('');
     try {
-      const data = await trainersApi.getAll(isAdmin);
-      setTrainers(data);
+      setTrainers(await trainersApi.getAll(isAdmin));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -92,12 +119,8 @@ export default function Trainers() {
 
   const handleDelete = async (id) => {
     if (!confirm('Deactivate this trainer?')) return;
-    try {
-      await trainersApi.delete(id);
-      load();
-    } catch (err) {
-      alert(err.message);
-    }
+    try { await trainersApi.delete(id); load(); }
+    catch (err) { alert(err.message); }
   };
 
   const filtered = trainers.filter(t =>
@@ -107,48 +130,67 @@ export default function Trainers() {
 
   return (
     <Layout>
-      <div className="d-flex align-items-center justify-content-between mb-4">
-        <h1 className="gym-page-title">Trainers</h1>
+      <div className="gym-page-header d-flex align-items-center justify-content-between">
+        <div>
+          <h1 className="gym-page-title">Trainers</h1>
+          {!loading && (
+            <p className="gym-page-subtitle">{filtered.length} trainer{filtered.length !== 1 ? 's' : ''}</p>
+          )}
+        </div>
         {isAdmin && (
-          <button className="btn btn-gym" onClick={() => setModal('create')}>
-            + New Trainer
-          </button>
+          <button className="btn-gym" onClick={() => setModal('create')}>+ New Trainer</button>
         )}
       </div>
 
-      <div className="mb-4" style={{ maxWidth: 340 }}>
-        <input
-          className="gym-input"
-          placeholder="Search by name or specialization..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
+      <div className="gym-filter-bar">
+        <div className="gym-search">
+          <span className="gym-search-icon">&#9906;</span>
+          <input
+            className="gym-input"
+            placeholder="Search by name or specialization..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
       </div>
 
-      {error && <div className="gym-alert-error mb-3">{error}</div>}
+      {error && <div className="gym-alert-error mb-4">{error}</div>}
 
       {loading ? (
-        <div className="gym-loading">Loading...</div>
+        <div className="gym-loading">Loading trainers</div>
       ) : filtered.length === 0 ? (
-        <p className="text-muted">No trainers found.</p>
+        <div className="gym-empty">No trainers found.</div>
       ) : (
         <div className="row g-3">
           {filtered.map(t => (
-            <div key={t.trainerId} className="col-12 col-md-6 col-lg-4">
+            <div key={t.trainerId} className="col-12 col-md-6 col-xl-4">
               <div className={`gym-card h-100${!t.isActive ? ' gym-card-inactive' : ''}`}>
                 <div className="gym-card-body">
                   <div className="d-flex justify-content-between align-items-start mb-2">
                     <h5 className="gym-card-title">{t.name}</h5>
-                    {!t.isActive && <span className="gym-badge-inactive">Inactive</span>}
+                    {!t.isActive
+                      ? <span className="gym-badge gym-badge-inactive">Inactive</span>
+                      : <span className="gym-badge gym-badge-active">Active</span>
+                    }
                   </div>
-                  <p className="gym-card-meta mb-2">{t.specialization}</p>
+                  <p className="gym-card-meta mb-3">{t.specialization}</p>
                   {t.bio && <p className="gym-card-text">{t.bio}</p>}
                 </div>
                 {isAdmin && (
                   <div className="gym-card-footer d-flex gap-2">
-                    <button className="btn btn-gym-outline btn-sm flex-fill" onClick={() => setModal(t)}>Edit</button>
+                    <button
+                      className="btn-gym-outline btn-sm flex-fill"
+                      onClick={() => setModal(t)}
+                    >
+                      Edit
+                    </button>
                     {t.isActive && (
-                      <button className="btn btn-gym-danger btn-sm flex-fill" onClick={() => handleDelete(t.trainerId)}>Deactivate</button>
+                      <button
+                        className="btn-gym-danger btn-sm flex-fill"
+                        onClick={() => handleDelete(t.trainerId)}
+                      >
+                        Deactivate
+                      </button>
                     )}
                   </div>
                 )}

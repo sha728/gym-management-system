@@ -10,8 +10,9 @@ export default function Layout({ children }) {
         </div>
       </main>
       <footer className="gym-footer">
-        <div className="container">
-          <span className="text-muted small">APEX GYM &copy; {new Date().getFullYear()}</span>
+        <div className="container d-flex align-items-center justify-content-between">
+          <span className="gym-footer-text">APEX GYM</span>
+          <span className="gym-footer-text">&copy; {new Date().getFullYear()}</span>
         </div>
       </footer>
     </div>
