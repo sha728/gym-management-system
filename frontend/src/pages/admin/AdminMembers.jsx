@@ -11,11 +11,11 @@ function formatDate(iso) {
 const PAGE_SIZE = 20;
 
 export default function AdminMembers() {
-  const [members, setMembers] = useState([]);
+  const [members, setMembers]       = useState([]);
   const [totalCount, setTotalCount] = useState(0);
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [page, setPage]             = useState(1);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState('');
 
   const load = async (p = 1) => {
     setLoading(true);
@@ -37,21 +37,21 @@ export default function AdminMembers() {
 
   return (
     <Layout>
-      <div className="mb-4">
+      <div className="gym-page-header">
         <h1 className="gym-page-title">Members</h1>
-        <p className="text-muted">{totalCount} registered members</p>
+        <p className="gym-page-subtitle">{totalCount} registered member{totalCount !== 1 ? 's' : ''}</p>
       </div>
 
       {error && <div className="gym-alert-error mb-3">{error}</div>}
 
       {loading ? (
-        <div className="gym-loading">Loading...</div>
+        <div className="gym-loading">Loading members</div>
       ) : members.length === 0 ? (
-        <p className="text-muted">No members found.</p>
+        <div className="gym-empty">No members found.</div>
       ) : (
         <>
           <div className="table-responsive">
-            <table className="gym-table">
+            <table className="table table-hover align-middle">
               <thead>
                 <tr>
                   <th>Email</th>
@@ -62,7 +62,9 @@ export default function AdminMembers() {
                 {members.map(m => (
                   <tr key={m.userId}>
                     <td>{m.email}</td>
-                    <td>{formatDate(m.createdAt)}</td>
+                    <td style={{ color: 'var(--text-muted)', fontSize: '0.83rem' }}>
+                      {formatDate(m.createdAt)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -70,12 +72,20 @@ export default function AdminMembers() {
           </div>
 
           {totalPages > 1 && (
-            <div className="d-flex gap-2 align-items-center mt-3">
-              <button className="btn btn-gym-outline btn-sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>
+            <div className="gym-pagination">
+              <button
+                className="btn-gym-ghost btn-sm"
+                disabled={page === 1}
+                onClick={() => setPage(p => p - 1)}
+              >
                 Prev
               </button>
-              <span className="text-muted small">Page {page} of {totalPages}</span>
-              <button className="btn btn-gym-outline btn-sm" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>
+              <span className="gym-page-info">Page {page} of {totalPages}</span>
+              <button
+                className="btn-gym-ghost btn-sm"
+                disabled={page === totalPages}
+                onClick={() => setPage(p => p + 1)}
+              >
                 Next
               </button>
             </div>

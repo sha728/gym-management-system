@@ -1,8 +1,25 @@
-# Apex Gym & Fitness Management System
+# Apex Gym Management System
 
-A full-stack web application for managing a gym. Members can browse fitness programs, view trainers and sessions, book classes, and manage their membership. Admins handle the day-to-day operations: creating programs and sessions, managing trainer availability, reviewing membership requests and monitoring bookings.
+This is my gym management web app that I built during my internship. It's a pretty comprehensive system where gym members can browse programs, book sessions, and manage their memberships, while admins handle all the day-to-day operations.
 
-Built as a two-week internship assignment using React, .NET 10 Web API and PostgreSQL.
+The whole thing runs on React for the frontend, .NET for the API, and PostgreSQL for the database. I spent about two weeks building this from scratch.
+
+---
+
+## What it does
+
+**For Members:**
+- Browse fitness programs and trainers
+- View available sessions and book classes
+- Track your bookings and manage your membership
+- Clean, responsive interface that works on mobile
+
+**For Admins:**
+- Create and manage fitness programs
+- Set up trainer schedules and availability
+- Review membership requests (approve/reject)
+- Monitor all bookings and member activity
+- Comprehensive dashboard with key metrics
 
 ---
 
@@ -13,147 +30,134 @@ Built as a two-week internship assignment using React, .NET 10 Web API and Postg
 | Frontend | React 19, Vite, Bootstrap 5 |
 | Backend | C# .NET 10 Web API |
 | Database | PostgreSQL 17 |
-| Auth | JWT (HS256, role-based) |
+| Auth | JWT with role-based access |
 | Containers | Docker, Docker Compose |
 
 ---
 
-## Running with Docker
+## Getting Started
 
-This is the easiest way to get everything up. You just need Docker Desktop installed.
+### Option 1: Docker (Recommended)
 
-**1. Copy the env file and fill in your values**
+This is the easiest way - just need Docker Desktop installed.
 
-```
+**1. Set up your environment**
+
+```bash
 cp .env.example .env
 ```
 
-The defaults in `.env.example` work fine for local testing. The only thing you need to decide is the admin password.
+The defaults work fine for local development. Just set your preferred admin password.
 
 **2. Start everything**
 
-```
+```bash
 docker compose up --build
 ```
 
-This starts PostgreSQL, the .NET API and the React frontend together. The backend waits for Postgres to be healthy before it starts, and applies any pending migrations automatically on first boot.
+This spins up PostgreSQL, the .NET API, and the React frontend all together. The backend automatically waits for the database and runs any pending migrations.
 
 **3. Open the app**
 
-- Frontend: `http://localhost`
-- API / Swagger: `http://localhost:8080/swagger`
+- Frontend: http://localhost
+- API docs: http://localhost:8080/swagger
 
-**Stopping**
+### Option 2: Local Development
 
-```
-docker compose down
-```
+If you want to run everything locally:
 
-If you also want to wipe the database volume:
-
-```
-docker compose down -v
-```
-
----
-
-## Running locally
-
-If you prefer to run things without Docker, you'll need:
-
+**Prerequisites:**
 - .NET 10 SDK
-- Node.js 22
-- PostgreSQL 17 running locally on port 5432
+- Node.js 22+
+- PostgreSQL 17
 
-**Backend**
-
-```
+**Start the backend:**
+```bash
 cd backend/GymApi
+dotnet ef database update  # First time only
 dotnet run --launch-profile http
 ```
 
-The API will be at `http://localhost:5256` and Swagger at `http://localhost:5256/swagger`.
-
-Before the first run, apply the database migrations:
-
-```
-dotnet ef database update
-```
-
-**Frontend**
-
-```
+**Start the frontend:**
+```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-The app will be at `http://localhost:5173`. The Vite dev server automatically proxies `/api` requests to the backend, so no CORS configuration is needed.
-
 ---
 
-## Default accounts
+## Default Login
 
-The admin account is created automatically the first time the backend starts, using the `ADMIN_PASSWORD` value from your `.env` file.
+The system creates an admin account automatically:
 
 | Role | Email | Password |
 |---|---|---|
-| Admin | admin@gym.com | whatever you set as `ADMIN_PASSWORD` |
+| Admin | admin@gym.com | (whatever you set in .env) |
 
-Members register themselves through the app at `/register`. There is no admin approval step for registration.
+New members can register themselves - no approval needed.
 
 ---
 
-## Running tests
+## Testing
 
-**Backend**
+I've included tests for both frontend and backend:
 
-```
+```bash
+# Backend tests
 cd GymApi.Tests
 dotnet test
-```
 
-**Frontend**
-
-```
+# Frontend tests  
 cd frontend
 npm test
 ```
 
 ---
 
-## Environment variables
-
-All configuration is done through the `.env` file in the project root. Copy `.env.example` to get started.
-
-| Variable | What it's for |
-|---|---|
-| `POSTGRES_DB` | Database name |
-| `POSTGRES_USER` | Database user |
-| `POSTGRES_PASSWORD` | Database password |
-| `JWT_KEY` | JWT signing key, needs to be at least 32 characters |
-| `ADMIN_PASSWORD` | Password for the auto-seeded admin account |
-
----
-
-## Project structure
+## Project Structure
 
 ```
 AssignmentGym/
-  backend/
-    GymApi/
-      Controllers/      One controller per resource
-      Models/           EF Core entity models
-      DTOs/             Request and response shapes
-      Data/             DbContext, relationships and seeder
-      Migrations/       EF Core migration history
-  frontend/
-    src/
-      api/              Authed fetch wrapper for every API endpoint
-      components/       Navbar, Layout, ProtectedRoute
-      context/          AuthContext (JWT state, login, logout)
-      pages/            Member and Admin pages
-  GymApi.Tests/         Backend unit and integration tests
-  docker-compose.yml
-  .env.example
+├── backend/GymApi/
+│   ├── Controllers/      # API endpoints
+│   ├── Models/          # Database entities
+│   ├── DTOs/            # API request/response models
+│   ├── Data/            # Database context and seeding
+│   └── Migrations/      # Database migration history
+├── frontend/src/
+│   ├── api/             # API client wrapper
+│   ├── components/      # Reusable UI components
+│   ├── context/         # React context (auth state)
+│   ├── pages/           # All the app pages
+│   └── __tests__/       # Frontend tests
+├── GymApi.Tests/        # Backend unit/integration tests
+└── docker-compose.yml   # Container orchestration
 ```
+
+---
+
+## Environment Variables
+
+Copy `.env.example` to `.env` and customize:
+
+| Variable | Description |
+|---|---|
+| `POSTGRES_DB` | Database name |
+| `POSTGRES_USER` | Database username |
+| `POSTGRES_PASSWORD` | Database password |
+| `JWT_KEY` | JWT signing secret (32+ chars) |
+| `ADMIN_PASSWORD` | Admin account password |
+
+---
+
+## Features I'm Proud Of
+
+- **Clean, modern UI** - Spent time making it look professional
+- **Role-based authentication** - Members and admins see different features
+- **Comprehensive admin tools** - Full CRUD operations for all resources
+- **Mobile-responsive** - Works great on phones and tablets
+- **Docker-ready** - One command to get everything running
+- **Well-tested** - Both frontend and backend test coverage
+
+This was a great learning project that really helped me understand full-stack development. Hope you find it useful!

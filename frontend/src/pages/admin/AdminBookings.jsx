@@ -44,11 +44,12 @@ export default function AdminBookings() {
 
   return (
     <Layout>
-      <div className="d-flex align-items-center justify-content-between mb-4">
-        <div>
-          <h1 className="gym-page-title">Bookings</h1>
-          <p className="text-muted">{totalCount} total</p>
-        </div>
+      <div className="gym-page-header">
+        <h1 className="gym-page-title">Bookings</h1>
+        <p className="gym-page-subtitle">{totalCount} total booking{totalCount !== 1 ? 's' : ''}</p>
+      </div>
+
+      <div className="gym-filter-bar">
         <select
           className="gym-input"
           style={{ maxWidth: 160 }}
@@ -64,13 +65,13 @@ export default function AdminBookings() {
       {error && <div className="gym-alert-error mb-3">{error}</div>}
 
       {loading ? (
-        <div className="gym-loading">Loading...</div>
+        <div className="gym-loading">Loading bookings</div>
       ) : bookings.length === 0 ? (
-        <p className="text-muted">No bookings found.</p>
+        <div className="gym-empty">No bookings found.</div>
       ) : (
         <>
           <div className="table-responsive">
-            <table className="gym-table">
+            <table className="table table-hover align-middle">
               <thead>
                 <tr>
                   <th>Member</th>
@@ -88,9 +89,15 @@ export default function AdminBookings() {
                     <td>{b.memberEmail}</td>
                     <td>{b.programTitle}</td>
                     <td>{b.trainerName}</td>
-                    <td>{formatDate(b.startTime)}</td>
-                    <td>{formatDate(b.endTime)}</td>
-                    <td>{formatDate(b.bookedAt)}</td>
+                    <td style={{ color: 'var(--text-muted)', fontSize: '0.83rem' }}>
+                      {formatDate(b.startTime)}
+                    </td>
+                    <td style={{ color: 'var(--text-muted)', fontSize: '0.83rem' }}>
+                      {formatDate(b.endTime)}
+                    </td>
+                    <td style={{ color: 'var(--text-muted)', fontSize: '0.83rem' }}>
+                      {formatDate(b.bookedAt)}
+                    </td>
                     <td>
                       {b.status === 'Confirmed'
                         ? <span className="gym-badge-active">Confirmed</span>
@@ -103,10 +110,22 @@ export default function AdminBookings() {
           </div>
 
           {totalPages > 1 && (
-            <div className="d-flex gap-2 align-items-center mt-3">
-              <button className="btn btn-gym-outline btn-sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Prev</button>
-              <span className="text-muted small">Page {page} of {totalPages}</span>
-              <button className="btn btn-gym-outline btn-sm" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>Next</button>
+            <div className="gym-pagination">
+              <button
+                className="btn-gym-ghost btn-sm"
+                disabled={page === 1}
+                onClick={() => setPage(p => p - 1)}
+              >
+                Prev
+              </button>
+              <span className="gym-page-info">Page {page} of {totalPages}</span>
+              <button
+                className="btn-gym-ghost btn-sm"
+                disabled={page === totalPages}
+                onClick={() => setPage(p => p + 1)}
+              >
+                Next
+              </button>
             </div>
           )}
         </>

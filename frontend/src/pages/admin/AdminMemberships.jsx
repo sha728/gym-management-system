@@ -212,11 +212,11 @@ export default function AdminMemberships() {
 
   return (
     <Layout>
-      <div className="mb-4">
+      <div className="gym-page-header">
         <h1 className="gym-page-title">Memberships</h1>
+        <p className="gym-page-subtitle">Review requests and manage plans</p>
       </div>
 
-      {/* Tabs */}
       <div className="d-flex gap-2 mb-4">
         <button className={`btn btn-sm ${tab === 'requests' ? 'btn-gym' : 'btn-gym-outline'}`} onClick={() => setTab('requests')}>
           Requests
@@ -230,7 +230,7 @@ export default function AdminMemberships() {
 
       {tab === 'requests' && (
         <>
-          <div className="d-flex gap-2 mb-4 align-items-center">
+          <div className="gym-filter-bar">
             <select
               className="gym-input"
               style={{ maxWidth: 180 }}
@@ -253,7 +253,7 @@ export default function AdminMemberships() {
           ) : (
             <>
               <div className="table-responsive">
-                <table className="gym-table">
+                <table className="table table-hover align-middle">
                   <thead>
                     <tr>
                       <th>Member</th>
@@ -293,10 +293,22 @@ export default function AdminMemberships() {
               </div>
 
               {totalPages > 1 && (
-                <div className="d-flex gap-2 align-items-center mt-3">
-                  <button className="btn btn-gym-outline btn-sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Prev</button>
-                  <span className="text-muted small">Page {page} of {totalPages}</span>
-                  <button className="btn btn-gym-outline btn-sm" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>Next</button>
+                <div className="gym-pagination">
+                  <button
+                    className="btn-gym-ghost btn-sm"
+                    disabled={page === 1}
+                    onClick={() => setPage(p => p - 1)}
+                  >
+                    Prev
+                  </button>
+                  <span className="gym-page-info">Page {page} of {totalPages}</span>
+                  <button
+                    className="btn-gym-ghost btn-sm"
+                    disabled={page === totalPages}
+                    onClick={() => setPage(p => p + 1)}
+                  >
+                    Next
+                  </button>
                 </div>
               )}
             </>
