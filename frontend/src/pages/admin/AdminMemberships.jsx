@@ -196,17 +196,35 @@ export default function AdminMemberships() {
   };
 
   useEffect(() => {
-    if (tab === 'requests') {
-      setPage(1);
-      loadMemberships(1, statusFilter);
-    } else {
-      loadPlans();
-    }
-  }, [tab, statusFilter]);
-
-  useEffect(() => {
-    if (tab === 'requests') loadMemberships(page);
-  }, [page]);
+    const loadData = async () => {
+      if (tab === 'requests') {
+        setLoading(true);
+        setError('');
+        try {
+          const data = await membershipsApi.getAll({ page, pageSize: PAGE_SIZE, status: statusFilter || undefined });
+          setMemberships(data.items);
+          setTotalCount(data.totalCount);
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        setLoading(true);
+        setError('');
+        try {
+          const data = await plansApi.getAll(true);
+          setPlans(data);
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+    
+    loadData();
+  }, [tab, statusFilter, page]);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
@@ -218,10 +236,16 @@ export default function AdminMemberships() {
       </div>
 
       <div className="d-flex gap-2 mb-4">
-        <button className={`btn btn-sm ${tab === 'requests' ? 'btn-gym' : 'btn-gym-outline'}`} onClick={() => setTab('requests')}>
+        <button className={`btn btn-sm ${tab === 'requests' ? 'btn-gym' : 'btn-gym-outline'}`} onClick={() => {
+          setTab('requests');
+          setPage(1);
+        }}>
           Requests
         </button>
-        <button className={`btn btn-sm ${tab === 'plans' ? 'btn-gym' : 'btn-gym-outline'}`} onClick={() => setTab('plans')}>
+        <button className={`btn btn-sm ${tab === 'plans' ? 'btn-gym' : 'btn-gym-outline'}`} onClick={() => {
+          setTab('plans');
+          setPage(1);
+        }}>
           Plans
         </button>
       </div>
@@ -235,7 +259,10 @@ export default function AdminMemberships() {
               className="gym-input"
               style={{ maxWidth: 180 }}
               value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
+              onChange={e => {
+                setStatusFilter(e.target.value);
+                setPage(1);
+              }}
             >
               <option value="">All</option>
               <option value="Pending">Pending</option>

@@ -116,7 +116,21 @@ export default function Programs() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const loadPrograms = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        setPrograms(await programsApi.getAll(isAdmin));
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadPrograms();
+  }, [isAdmin]);
 
   const handleDelete = async (id) => {
     if (!confirm('Deactivate this program?')) return;

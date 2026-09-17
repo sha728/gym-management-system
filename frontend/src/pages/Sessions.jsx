@@ -150,7 +150,21 @@ export default function Sessions() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const loadSessions = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        setSessions(await sessionsApi.getAll({ includeInactive: isAdmin }));
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadSessions();
+  }, [isAdmin]);
 
   const handleBook = async (sessionId) => {
     setBookingId(sessionId);

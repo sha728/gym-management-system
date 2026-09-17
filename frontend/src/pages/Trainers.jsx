@@ -115,7 +115,21 @@ export default function Trainers() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const loadTrainers = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        setTrainers(await trainersApi.getAll(isAdmin));
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadTrainers();
+  }, [isAdmin]);
 
   const handleDelete = async (id) => {
     if (!confirm('Deactivate this trainer?')) return;
