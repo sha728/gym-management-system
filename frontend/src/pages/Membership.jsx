@@ -43,7 +43,26 @@ export default function Membership() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const loadMemberships = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const [membershipData, planData] = await Promise.all([
+          membershipsApi.my(),
+          plansApi.getAll()
+        ]);
+        setMemberships(membershipData);
+        setPlans(planData);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadMemberships();
+  }, []);
 
   const hasActive  = memberships.some(m => m.status === 'Active');
   const hasPending = memberships.some(m => m.status === 'Pending');

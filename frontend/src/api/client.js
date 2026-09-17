@@ -28,6 +28,13 @@ async function request(path, options = {}) {
   }
 
   if (!res.ok) {
+    // Handle 401 Unauthorized - but not for auth endpoints
+    if (res.status === 401 && !path.startsWith('/auth/')) {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+      return;
+    }
+    
     const message =
       typeof body === 'string'
         ? body

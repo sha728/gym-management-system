@@ -19,26 +19,23 @@ export default function AdminBookings() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const load = async (p = 1, status = statusFilter) => {
-    setLoading(true);
-    setError('');
-    try {
-      const data = await bookingsApi.getAll({ page: p, pageSize: PAGE_SIZE, status: status || undefined });
-      setBookings(data.items);
-      setTotalCount(data.totalCount);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    setPage(1);
-    load(1, statusFilter);
-  }, [statusFilter]);
-
-  useEffect(() => { load(page); }, [page]);
+    const loadBookings = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const data = await bookingsApi.getAll({ page, pageSize: PAGE_SIZE, status: statusFilter || undefined });
+        setBookings(data.items);
+        setTotalCount(data.totalCount);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadBookings();
+  }, [page, statusFilter]);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
@@ -54,7 +51,10 @@ export default function AdminBookings() {
           className="gym-input"
           style={{ maxWidth: 160 }}
           value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)}
+          onChange={e => {
+            setStatusFilter(e.target.value);
+            setPage(1);
+          }}
         >
           <option value="">All Statuses</option>
           <option value="Confirmed">Confirmed</option>

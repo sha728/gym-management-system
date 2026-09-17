@@ -30,7 +30,21 @@ export default function MyBookings() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const loadBookings = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        setBookings(await bookingsApi.myBookings());
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadBookings();
+  }, []);
 
   const handleCancel = async (id) => {
     if (!confirm('Cancel this booking?')) return;

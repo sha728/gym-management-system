@@ -17,21 +17,23 @@ export default function AdminMembers() {
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState('');
 
-  const load = async (p = 1) => {
-    setLoading(true);
-    setError('');
-    try {
-      const data = await usersApi.getMembers({ page: p, pageSize: PAGE_SIZE });
-      setMembers(data.items);
-      setTotalCount(data.totalCount);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { load(page); }, [page]);
+  useEffect(() => {
+    const loadMembers = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const data = await usersApi.getMembers({ page, pageSize: PAGE_SIZE });
+        setMembers(data.items);
+        setTotalCount(data.totalCount);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadMembers();
+  }, [page]);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
