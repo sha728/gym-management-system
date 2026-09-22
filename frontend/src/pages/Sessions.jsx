@@ -151,19 +151,24 @@ export default function Sessions() {
   };
 
   useEffect(() => {
-    const loadSessions = async () => {
+    const loadAll = async () => {
       setLoading(true);
       setError('');
       try {
-        setSessions(await sessionsApi.getAll({ includeInactive: isAdmin }));
+        const [s, p, t] = await Promise.all([
+          sessionsApi.getAll({ includeInactive: isAdmin }),
+          programsApi.getAll(isAdmin),
+          trainersApi.getAll(isAdmin),
+        ]);
+        setSessions(s); setPrograms(p); setTrainers(t);
       } catch (err) {
         setError(err.message);
       } finally {
         setLoading(false);
       }
     };
-    
-    loadSessions();
+
+    loadAll();
   }, [isAdmin]);
 
   const handleBook = async (sessionId) => {
