@@ -79,10 +79,10 @@ export const trainersApi = {
   create: (data) => api.post('/trainers', data),
   update: (id, data) => api.put(`/trainers/${id}`, data),
   delete: (id) => api.delete(`/trainers/${id}`),
-  getAvailability: (id) => api.get(`/traineravailability/${id}`),
-  addAvailability: (id, data) => api.post(`/traineravailability/${id}`, data),
+  getAvailability: (id) => api.get(`/trainers/${id}/availability`),
+  addAvailability: (id, data) => api.post(`/trainers/${id}/availability`, data),
   deleteAvailability: (trainerId, availId) =>
-    api.delete(`/traineravailability/${trainerId}/${availId}`),
+    api.delete(`/trainers/${trainerId}/availability/${availId}`),
 };
 
 // ---- Sessions ----
