@@ -18,7 +18,7 @@ function renderWithAuth(component) {
 describe('Authentication Components', () => {
   test('renders login form correctly', () => {
     renderWithAuth(<Login />);
-    expect(screen.getByText('Member Login')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Sign in/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/Email Address/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Password/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Sign In/i })).toBeInTheDocument();
@@ -26,11 +26,11 @@ describe('Authentication Components', () => {
 
   test('renders register form correctly', () => {
     renderWithAuth(<Register />);
-    expect(screen.getByText('Become a Member')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Create account/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/Full Name/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Email Address/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Password/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Register/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Create Account/i })).toBeInTheDocument();
   });
 
   test('updates email input on change in login', () => {
@@ -77,7 +77,7 @@ describe('Authentication Components', () => {
     fireEvent.change(screen.getByLabelText(/Full Name/i), { target: { value: 'Test' } });
     fireEvent.change(screen.getByLabelText(/Email Address/i), { target: { value: 'dup@test.com' } });
     fireEvent.change(screen.getByLabelText(/Password/i), { target: { value: 'pass123' } });
-    fireEvent.click(screen.getByRole('button', { name: /Register/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Create Account/i }));
 
     await waitFor(() => {
       expect(screen.getByText('A user with this email already exists.')).toBeInTheDocument();
