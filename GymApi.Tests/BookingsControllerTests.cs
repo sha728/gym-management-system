@@ -365,7 +365,7 @@ public class BookingsControllerTests
 
         var result = await controller.GetBooking(booking.BookingId);
 
-        Assert.IsType<ForbidResult>(result);
+        Assert.IsType<NotFoundResult>(result);
     }
 
     [Fact]
@@ -449,7 +449,7 @@ public class BookingsControllerTests
 
         var result = await controller.CancelBooking(booking.BookingId);
 
-        Assert.IsType<ForbidResult>(result);
+        Assert.IsType<NotFoundResult>(result);
         Assert.Equal(BookingStatus.Confirmed, booking.Status);
     }
 

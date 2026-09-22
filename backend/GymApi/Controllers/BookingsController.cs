@@ -124,8 +124,10 @@ public class BookingsController : ControllerBase
                 return BadRequest(new { message = "Session is fully booked." });
             }
 
-            var alreadyBooked = session.Bookings.Any(b => b.UserId == userId && b.Status == BookingStatus.Confirmed);
-            if (alreadyBooked)
+            // Check if user already has a booking (any status) for this session
+            var existingBooking = session.Bookings.FirstOrDefault(b => b.UserId == userId);
+            
+            if (existingBooking != null && existingBooking.Status == BookingStatus.Confirmed)
             {
                 return BadRequest(new { message = "You have already booked this session." });
             }
@@ -144,16 +146,28 @@ public class BookingsController : ControllerBase
                 return Conflict(new { message = "You already have another session booked during this time frame." });
             }
 
-            var booking = new Booking
+            if (existingBooking != null && existingBooking.Status == BookingStatus.Cancelled)
             {
-                BookingId = Guid.NewGuid(),
-                UserId = userId,
-                SessionId = req.SessionId,
-                BookedAt = DateTime.UtcNow,
-                Status = BookingStatus.Confirmed
-            };
+                // Reuse the cancelled booking instead of creating a new one
+                existingBooking.Status = BookingStatus.Confirmed;
+                existingBooking.BookedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                // Create new booking
+                var booking = new Booking
+                {
+                    BookingId = Guid.NewGuid(),
+                    UserId = userId,
+                    SessionId = req.SessionId,
+                    BookedAt = DateTime.UtcNow,
+                    Status = BookingStatus.Confirmed
+                };
 
-            _db.Bookings.Add(booking);
+                _db.Bookings.Add(booking);
+                existingBooking = booking;
+            }
+
             await _db.SaveChangesAsync();
 
             if (transaction != null)
@@ -163,17 +177,17 @@ public class BookingsController : ControllerBase
 
             var response = new BookingResponse
             {
-                BookingId = booking.BookingId,
+                BookingId = existingBooking.BookingId,
                 SessionId = session.SessionId,
                 ProgramTitle = session.FitnessProgram?.Name ?? string.Empty,
                 TrainerName = session.Trainer?.Name ?? string.Empty,
                 StartTime = session.StartTime,
                 EndTime = session.EndTime,
-                BookedAt = booking.BookedAt,
-                Status = booking.Status
+                BookedAt = existingBooking.BookedAt,
+                Status = existingBooking.Status
             };
 
-            return CreatedAtAction(nameof(GetBooking), new { id = booking.BookingId }, response);
+            return CreatedAtAction(nameof(GetBooking), new { id = existingBooking.BookingId }, response);
         }
         catch (Exception ex) when (IsBookingConflict(ex))
         {
@@ -241,7 +255,7 @@ public class BookingsController : ControllerBase
         var userRole = User.FindFirstValue(ClaimTypes.Role);
         if (booking.UserId != userId && userRole != "Admin")
         {
-            return Forbid();
+            return NotFound();
         }
 
         var response = new BookingResponse
@@ -282,10 +296,10 @@ public class BookingsController : ControllerBase
         var userRole = User.FindFirstValue(ClaimTypes.Role);
         if (booking.UserId != userId && userRole != "Admin")
         {
-            return Forbid();
+            return NotFound();
         }
 
-        if (booking.Status == "Cancelled")
+        if (booking.Status == BookingStatus.Cancelled)
         {
             return BadRequest(new { message = "Booking is already cancelled." });
         }
@@ -295,7 +309,7 @@ public class BookingsController : ControllerBase
             return BadRequest(new { message = "Cannot cancel a session that has already started or passed." });
         }
 
-        booking.Status = "Cancelled";
+        booking.Status = BookingStatus.Cancelled;
         await _db.SaveChangesAsync();
 
         return Ok(new { message = "Booking cancelled successfully.", bookingId = booking.BookingId, status = booking.Status });
