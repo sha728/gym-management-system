@@ -95,6 +95,27 @@ function TrainerModal({ trainer, onClose, onSave }) {
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+// The backend stores availability windows and session times as UTC day-of-week + time-of-day, so a
+// window entered in the admin's local time has to be converted before it's compared against sessions.
+function localDayTimeToUtc(dayOfWeek, hhmm) {
+  const [hours, minutes] = hhmm.split(':').map(Number);
+  // Jan 1 2023 was a Sunday, so day (1 + dayOfWeek) lands on the matching weekday in local time.
+  const local = new Date(2023, 0, 1 + dayOfWeek, hours, minutes, 0);
+  return {
+    dayOfWeek: local.getUTCDay(),
+    time: `${String(local.getUTCHours()).padStart(2, '0')}:${String(local.getUTCMinutes()).padStart(2, '0')}:00`,
+  };
+}
+
+function utcDayTimeToLocal(dayOfWeek, hhmmss) {
+  const [hours, minutes] = hhmmss.split(':').map(Number);
+  const utc = new Date(Date.UTC(2023, 0, 1 + dayOfWeek, hours, minutes, 0));
+  return {
+    dayName: DAY_NAMES[utc.getDay()],
+    time: `${String(utc.getHours()).padStart(2, '0')}:${String(utc.getMinutes()).padStart(2, '0')}`,
+  };
+}
+
 function AvailabilityModal({ trainer, onClose }) {
   const [windows, setWindows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -136,10 +157,18 @@ function AvailabilityModal({ trainer, onClose }) {
     setError('');
     setSaving(true);
     try {
+      const start = localDayTimeToUtc(Number(form.dayOfWeek), form.startTime);
+      const end = localDayTimeToUtc(Number(form.dayOfWeek), form.endTime);
+
+      if (start.dayOfWeek !== end.dayOfWeek) {
+        setError('This window crosses a UTC day boundary in your timezone. Pick a start/end time that stays within the same UTC day.');
+        return;
+      }
+
       await trainersApi.addAvailability(trainer.trainerId, {
-        dayOfWeek: Number(form.dayOfWeek),
-        startTime: `${form.startTime}:00`,
-        endTime: `${form.endTime}:00`,
+        dayOfWeek: start.dayOfWeek,
+        startTime: start.time,
+        endTime: end.time,
       });
       await load();
     } catch (err) {
@@ -167,6 +196,8 @@ function AvailabilityModal({ trainer, onClose }) {
           <button className="gym-modal-close" onClick={onClose} aria-label="Close">&#x2715;</button>
         </div>
 
+        <p className="gym-page-subtitle mb-3">Times below are shown in your local timezone.</p>
+
         {error && <div className="gym-alert-error mb-3">{error}</div>}
 
         {loading ? (
@@ -185,21 +216,25 @@ function AvailabilityModal({ trainer, onClose }) {
                 </tr>
               </thead>
               <tbody>
-                {windows.map(w => (
-                  <tr key={w.trainerAvailabilityId}>
-                    <td>{DAY_NAMES[w.dayOfWeek]}</td>
-                    <td>{w.startTime.slice(0, 5)}</td>
-                    <td>{w.endTime.slice(0, 5)}</td>
-                    <td>
-                      <button
-                        className="btn-gym-danger btn-sm"
-                        onClick={() => handleDelete(w.trainerAvailabilityId)}
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {windows.map(w => {
+                  const start = utcDayTimeToLocal(w.dayOfWeek, w.startTime);
+                  const end = utcDayTimeToLocal(w.dayOfWeek, w.endTime);
+                  return (
+                    <tr key={w.trainerAvailabilityId}>
+                      <td>{start.dayName}</td>
+                      <td>{start.time}</td>
+                      <td>{end.time}</td>
+                      <td>
+                        <button
+                          className="btn-gym-danger btn-sm"
+                          onClick={() => handleDelete(w.trainerAvailabilityId)}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
