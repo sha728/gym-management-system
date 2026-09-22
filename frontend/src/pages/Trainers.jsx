@@ -93,6 +93,164 @@ function TrainerModal({ trainer, onClose, onSave }) {
   );
 }
 
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+function AvailabilityModal({ trainer, onClose }) {
+  const [windows, setWindows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ dayOfWeek: '1', startTime: '09:00', endTime: '17:00' });
+
+  const load = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      setWindows(await trainersApi.getAvailability(trainer.trainerId));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const loadWindows = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        setWindows(await trainersApi.getAvailability(trainer.trainerId));
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadWindows();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSaving(true);
+    try {
+      await trainersApi.addAvailability(trainer.trainerId, {
+        dayOfWeek: Number(form.dayOfWeek),
+        startTime: `${form.startTime}:00`,
+        endTime: `${form.endTime}:00`,
+      });
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('Remove this availability window?')) return;
+    try {
+      await trainersApi.deleteAvailability(trainer.trainerId, id);
+      load();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  return (
+    <div className="gym-modal-backdrop">
+      <div className="gym-modal">
+        <div className="gym-modal-header">
+          <span className="gym-modal-title">{trainer.name} — Availability</span>
+          <button className="gym-modal-close" onClick={onClose} aria-label="Close">&#x2715;</button>
+        </div>
+
+        {error && <div className="gym-alert-error mb-3">{error}</div>}
+
+        {loading ? (
+          <div className="gym-loading">Loading availability</div>
+        ) : windows.length === 0 ? (
+          <div className="gym-empty">No availability windows yet.</div>
+        ) : (
+          <div className="table-responsive mb-3">
+            <table className="table table-hover align-middle">
+              <thead>
+                <tr>
+                  <th>Day</th>
+                  <th>Start</th>
+                  <th>End</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {windows.map(w => (
+                  <tr key={w.trainerAvailabilityId}>
+                    <td>{DAY_NAMES[w.dayOfWeek]}</td>
+                    <td>{w.startTime.slice(0, 5)}</td>
+                    <td>{w.endTime.slice(0, 5)}</td>
+                    <td>
+                      <button
+                        className="btn-gym-danger btn-sm"
+                        onClick={() => handleDelete(w.trainerAvailabilityId)}
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <form onSubmit={handleAdd}>
+          <div className="row g-2 align-items-end">
+            <div className="col-4">
+              <label className="gym-label">Day</label>
+              <select
+                className="gym-input"
+                value={form.dayOfWeek}
+                onChange={e => setForm({ ...form, dayOfWeek: e.target.value })}
+              >
+                {DAY_NAMES.map((name, index) => (
+                  <option key={name} value={index}>{name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="col-3">
+              <label className="gym-label">Start</label>
+              <input
+                type="time"
+                className="gym-input"
+                value={form.startTime}
+                onChange={e => setForm({ ...form, startTime: e.target.value })}
+                required
+              />
+            </div>
+            <div className="col-3">
+              <label className="gym-label">End</label>
+              <input
+                type="time"
+                className="gym-input"
+                value={form.endTime}
+                onChange={e => setForm({ ...form, endTime: e.target.value })}
+                required
+              />
+            </div>
+            <div className="col-2">
+              <button type="submit" className="btn-gym btn-sm w-100" disabled={saving}>
+                {saving ? 'Adding...' : 'Add'}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function Trainers() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
@@ -102,6 +260,7 @@ export default function Trainers() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState(null);
+  const [availabilityTrainer, setAvailabilityTrainer] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -198,6 +357,12 @@ export default function Trainers() {
                     >
                       Edit
                     </button>
+                    <button
+                      className="btn-gym-outline btn-sm flex-fill"
+                      onClick={() => setAvailabilityTrainer(t)}
+                    >
+                      Availability
+                    </button>
                     {t.isActive && (
                       <button
                         className="btn-gym-danger btn-sm flex-fill"
@@ -219,6 +384,13 @@ export default function Trainers() {
           trainer={modal === 'create' ? null : modal}
           onClose={() => setModal(null)}
           onSave={() => { setModal(null); load(); }}
+        />
+      )}
+
+      {availabilityTrainer && (
+        <AvailabilityModal
+          trainer={availabilityTrainer}
+          onClose={() => setAvailabilityTrainer(null)}
         />
       )}
     </Layout>
