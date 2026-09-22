@@ -1,7 +1,7 @@
 namespace GymApi.Models;
 
-public static class BookingStatus
+public enum BookingStatus
 {
-    public const string Confirmed = "Confirmed";
-    public const string Cancelled = "Cancelled";
+    Confirmed,
+    Cancelled
 }

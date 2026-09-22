@@ -1,3 +1,5 @@
+using GymApi.Models;
+
 namespace GymApi.DTOs;
 
 public class BookingResponse
@@ -9,5 +11,5 @@ public class BookingResponse
     public DateTime StartTime { get; set; }
     public DateTime EndTime { get; set; }
     public DateTime BookedAt { get; set; }
-    public string Status { get; set; } = string.Empty;
+    public BookingStatus Status { get; set; }
 }

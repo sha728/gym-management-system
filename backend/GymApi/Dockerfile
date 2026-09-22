@@ -14,9 +14,8 @@ WORKDIR /app
 
 COPY --from=build /app/publish ./
 
-# Run as non-root
-RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
-USER appuser
+# Run as non-root (using the built-in 'app' user)
+USER app
 
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080

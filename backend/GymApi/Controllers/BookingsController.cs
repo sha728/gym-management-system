@@ -23,7 +23,7 @@ public class BookingsController : ControllerBase
     [HttpGet]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> GetAllBookings(
-        [FromQuery] string? status = null,
+        [FromQuery] BookingStatus? status = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
