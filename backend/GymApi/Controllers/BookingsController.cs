@@ -1,0 +1,328 @@
+using GymApi.Data;
+using GymApi.DTOs;
+using GymApi.Models;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
+using System.Security.Claims;
+
+namespace GymApi.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+public class BookingsController : ControllerBase
+{
+    private readonly GymDbContext _db;
+
+    public BookingsController(GymDbContext db)
+    {
+        _db = db;
+    }
+
+    [HttpGet]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> GetAllBookings(
+        [FromQuery] string? status = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
+    {
+        if (page < 1 || pageSize is < 1 or > 100)
+        {
+            return BadRequest(new { message = "Page must be at least 1 and pageSize must be between 1 and 100." });
+        }
+
+        if (status is not null && status is not BookingStatus.Confirmed and not BookingStatus.Cancelled)
+        {
+            return BadRequest(new { message = "Status must be Confirmed or Cancelled." });
+        }
+
+        var query = _db.Bookings
+            .Include(booking => booking.User)
+            .Include(booking => booking.Session)
+                .ThenInclude(session => session.FitnessProgram)
+            .Include(booking => booking.Session)
+                .ThenInclude(session => session.Trainer)
+            .AsQueryable();
+
+        if (status is not null)
+        {
+            query = query.Where(booking => booking.Status == status);
+        }
+
+        var totalCount = await query.CountAsync();
+        var bookings = await query
+            .OrderByDescending(booking => booking.BookedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(booking => new AdminBookingResponse
+            {
+                BookingId = booking.BookingId,
+                UserId = booking.UserId,
+                MemberEmail = booking.User.Email,
+                SessionId = booking.SessionId,
+                ProgramTitle = booking.Session.FitnessProgram.Name,
+                TrainerName = booking.Session.Trainer.Name,
+                StartTime = booking.Session.StartTime,
+                EndTime = booking.Session.EndTime,
+                BookedAt = booking.BookedAt,
+                Status = booking.Status
+            })
+            .ToListAsync();
+
+        return Ok(new { items = bookings, page, pageSize, totalCount });
+    }
+
+    // Authenticated members can create a booking for an active future session.
+    [HttpPost]
+    [Authorize(Roles = "Member")]
+    public async Task<IActionResult> CreateBooking([FromBody] CreateBookingRequest req)
+    {
+        var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!Guid.TryParse(userIdStr, out var userId))
+        {
+            return Unauthorized(new { message = "Invalid user identity." });
+        }
+
+        var userExists = await _db.Users.AnyAsync(u => u.UserId == userId);
+        if (!userExists)
+        {
+            return Unauthorized(new { message = "User not found." });
+        }
+
+        try
+        {
+            // Serializable isolation makes one competing request retry instead of overbooking the last seat.
+            using var transaction = _db.Database.IsRelational()
+                ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable)
+                : null;
+
+            var session = await _db.Sessions
+                .Include(s => s.FitnessProgram)
+                .Include(s => s.Trainer)
+                .Include(s => s.Bookings)
+                .FirstOrDefaultAsync(s => s.SessionId == req.SessionId);
+
+            if (session == null)
+            {
+                return NotFound(new { message = "Session not found." });
+            }
+
+            if (!session.IsActive)
+            {
+                return BadRequest(new { message = "Session is inactive." });
+            }
+
+            if (session.StartTime <= DateTime.UtcNow)
+            {
+                return BadRequest(new { message = "Cannot book a session that has already started or passed." });
+            }
+
+            var confirmedCount = session.Bookings.Count(b => b.Status == BookingStatus.Confirmed);
+            if (confirmedCount >= session.Capacity)
+            {
+                return BadRequest(new { message = "Session is fully booked." });
+            }
+
+            // Check if user already has a booking (any status) for this session
+            var existingBooking = session.Bookings.FirstOrDefault(b => b.UserId == userId);
+            
+            if (existingBooking != null && existingBooking.Status == BookingStatus.Confirmed)
+            {
+                return BadRequest(new { message = "You have already booked this session." });
+            }
+
+            // Prevent schedule conflicts for the member.
+            var memberConflict = await _db.Bookings
+                .Include(b => b.Session)
+                .AnyAsync(b => b.UserId == userId &&
+                               b.Status == BookingStatus.Confirmed &&
+                               b.Session.IsActive &&
+                               b.Session.StartTime < session.EndTime &&
+                               b.Session.EndTime > session.StartTime);
+
+            if (memberConflict)
+            {
+                return Conflict(new { message = "You already have another session booked during this time frame." });
+            }
+
+            if (existingBooking != null && existingBooking.Status == BookingStatus.Cancelled)
+            {
+                // Reuse the cancelled booking instead of creating a new one
+                existingBooking.Status = BookingStatus.Confirmed;
+                existingBooking.BookedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                // Create new booking
+                var booking = new Booking
+                {
+                    BookingId = Guid.NewGuid(),
+                    UserId = userId,
+                    SessionId = req.SessionId,
+                    BookedAt = DateTime.UtcNow,
+                    Status = BookingStatus.Confirmed
+                };
+
+                _db.Bookings.Add(booking);
+                existingBooking = booking;
+            }
+
+            await _db.SaveChangesAsync();
+
+            if (transaction != null)
+            {
+                await transaction.CommitAsync();
+            }
+
+            var response = new BookingResponse
+            {
+                BookingId = existingBooking.BookingId,
+                SessionId = session.SessionId,
+                ProgramTitle = session.FitnessProgram?.Name ?? string.Empty,
+                TrainerName = session.Trainer?.Name ?? string.Empty,
+                StartTime = session.StartTime,
+                EndTime = session.EndTime,
+                BookedAt = existingBooking.BookedAt,
+                Status = existingBooking.Status
+            };
+
+            return CreatedAtAction(nameof(GetBooking), new { id = existingBooking.BookingId }, response);
+        }
+        catch (Exception ex) when (IsBookingConflict(ex))
+        {
+            return Conflict(new { message = "The session availability changed while your booking was being saved. Please try again." });
+        }
+    }
+
+    // Get all bookings for the currently authenticated user.
+    [HttpGet("my-bookings")]
+    [Authorize]
+    public async Task<IActionResult> GetMyBookings()
+    {
+        var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!Guid.TryParse(userIdStr, out var userId))
+        {
+            return Unauthorized(new { message = "Invalid user identity." });
+        }
+
+        var bookings = await _db.Bookings
+            .Include(b => b.Session)
+                .ThenInclude(s => s.FitnessProgram)
+            .Include(b => b.Session)
+                .ThenInclude(s => s.Trainer)
+            .Where(b => b.UserId == userId)
+            .OrderByDescending(b => b.BookedAt)
+            .Select(b => new BookingResponse
+            {
+                BookingId = b.BookingId,
+                SessionId = b.SessionId,
+                ProgramTitle = b.Session.FitnessProgram.Name,
+                TrainerName = b.Session.Trainer.Name,
+                StartTime = b.Session.StartTime,
+                EndTime = b.Session.EndTime,
+                BookedAt = b.BookedAt,
+                Status = b.Status
+            })
+            .ToListAsync();
+
+        return Ok(bookings);
+    }
+
+    // Get booking details by ID.
+    [HttpGet("{id:guid}")]
+    [Authorize]
+    public async Task<IActionResult> GetBooking(Guid id)
+    {
+        var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!Guid.TryParse(userIdStr, out var userId))
+        {
+            return Unauthorized(new { message = "Invalid user identity." });
+        }
+
+        var booking = await _db.Bookings
+            .Include(b => b.Session)
+                .ThenInclude(s => s.FitnessProgram)
+            .Include(b => b.Session)
+                .ThenInclude(s => s.Trainer)
+            .FirstOrDefaultAsync(b => b.BookingId == id);
+
+        if (booking == null)
+        {
+            return NotFound(new { message = "Booking not found." });
+        }
+
+        var userRole = User.FindFirstValue(ClaimTypes.Role);
+        if (booking.UserId != userId && userRole != "Admin")
+        {
+            return NotFound();
+        }
+
+        var response = new BookingResponse
+        {
+            BookingId = booking.BookingId,
+            SessionId = booking.SessionId,
+            ProgramTitle = booking.Session.FitnessProgram.Name,
+            TrainerName = booking.Session.Trainer.Name,
+            StartTime = booking.Session.StartTime,
+            EndTime = booking.Session.EndTime,
+            BookedAt = booking.BookedAt,
+            Status = booking.Status
+        };
+
+        return Ok(response);
+    }
+
+    // Cancel a booking (soft cancel by changing status to "Cancelled").
+    [HttpDelete("{id:guid}")]
+    [Authorize]
+    public async Task<IActionResult> CancelBooking(Guid id)
+    {
+        var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!Guid.TryParse(userIdStr, out var userId))
+        {
+            return Unauthorized(new { message = "Invalid user identity." });
+        }
+
+        var booking = await _db.Bookings
+            .Include(b => b.Session)
+            .FirstOrDefaultAsync(b => b.BookingId == id);
+
+        if (booking == null)
+        {
+            return NotFound(new { message = "Booking not found." });
+        }
+
+        var userRole = User.FindFirstValue(ClaimTypes.Role);
+        if (booking.UserId != userId && userRole != "Admin")
+        {
+            return NotFound();
+        }
+
+        if (booking.Status == BookingStatus.Cancelled)
+        {
+            return BadRequest(new { message = "Booking is already cancelled." });
+        }
+
+        if (booking.Session != null && booking.Session.StartTime <= DateTime.UtcNow)
+        {
+            return BadRequest(new { message = "Cannot cancel a session that has already started or passed." });
+        }
+
+        booking.Status = BookingStatus.Cancelled;
+        await _db.SaveChangesAsync();
+
+        return Ok(new { message = "Booking cancelled successfully.", bookingId = booking.BookingId, status = booking.Status });
+    }
+
+    private static bool IsBookingConflict(Exception exception)
+    {
+        return exception switch
+        {
+            PostgresException postgresException => postgresException.SqlState is "40001" or "40P01" or "23505",
+            DbUpdateException { InnerException: PostgresException postgresException } =>
+                postgresException.SqlState is "40001" or "40P01" or "23505",
+            _ => false
+        };
+    }
+}
