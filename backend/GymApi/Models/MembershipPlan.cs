@@ -10,6 +10,8 @@ public class MembershipPlan
 
     public int DurationInDays { get; set; }
 
+    public string Benefits { get; set; } = string.Empty;
+
     public bool IsActive { get; set; } = true;
 
     public ICollection<Membership> Memberships { get; set; }
