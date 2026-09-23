@@ -55,7 +55,7 @@ The defaults work fine for local development. Just set your preferred admin pass
 docker compose up --build
 ```
 
-This spins up PostgreSQL, the .NET API, and the React frontend all together. The backend automatically waits for the database and runs any pending migrations.
+This spins up PostgreSQL, the .NET API, and the React frontend all together. The backend automatically waits for the database and creates its schema on first run.
 
 **3. Open the app**
 
@@ -74,9 +74,9 @@ If you want to run everything locally:
 **Start the backend:**
 ```bash
 cd backend/GymApi
-dotnet ef database update  # First time only
 dotnet run --launch-profile http
 ```
+The database schema is created automatically on first run — no separate migration step needed.
 
 **Start the frontend:**
 ```bash
@@ -123,8 +123,7 @@ AssignmentGym/
 │   ├── Controllers/      # API endpoints
 │   ├── Models/          # Database entities
 │   ├── DTOs/            # API request/response models
-│   ├── Data/            # Database context and seeding
-│   └── Migrations/      # Database migration history
+│   └── Data/            # Database context and seeding
 ├── frontend/src/
 │   ├── api/             # API client wrapper
 │   ├── components/      # Reusable UI components
