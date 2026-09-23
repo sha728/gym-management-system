@@ -54,6 +54,7 @@ export default function Membership() {
         ]);
         setMemberships(membershipData);
         setPlans(planData);
+        if (planData.length > 0) setSelectedPlan(planData[0].membershipPlanId);
       } catch (err) {
         setError(err.message);
       } finally {
