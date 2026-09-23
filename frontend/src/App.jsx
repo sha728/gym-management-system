@@ -8,6 +8,7 @@ import Register from './pages/Register';
 
 // Member pages
 import Programs from './pages/Programs';
+import ProgramDetails from './pages/ProgramDetails';
 import Trainers from './pages/Trainers';
 import Sessions from './pages/Sessions';
 import MyBookings from './pages/MyBookings';
@@ -28,6 +29,7 @@ export default function App() {
           <Route path="/register" element={<Register />} />
 
           <Route path="/programs"    element={<ProtectedRoute role="Member"><Programs /></ProtectedRoute>} />
+          <Route path="/programs/:id" element={<ProtectedRoute><ProgramDetails /></ProtectedRoute>} />
           <Route path="/trainers"    element={<ProtectedRoute role="Member"><Trainers /></ProtectedRoute>} />
           <Route path="/sessions"    element={<ProtectedRoute role="Member"><Sessions /></ProtectedRoute>} />
           <Route path="/my-bookings" element={<ProtectedRoute role="Member"><MyBookings /></ProtectedRoute>} />

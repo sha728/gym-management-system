@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { programsApi } from '../api/client';
 import Layout from '../components/Layout';
@@ -192,24 +193,32 @@ export default function Programs() {
                   </p>
                   <span className="gym-card-meta">{p.durationInMinutes} min</span>
                 </div>
-                {isAdmin && (
-                  <div className="gym-card-footer d-flex gap-2">
-                    <button
-                      className="btn-gym-outline btn-sm flex-fill"
-                      onClick={() => setModal(p)}
-                    >
-                      Edit
-                    </button>
-                    {p.isActive && (
+                <div className="gym-card-footer d-flex gap-2">
+                  <Link
+                    to={`/programs/${p.fitnessProgramId}`}
+                    className="btn-gym-outline btn-sm flex-fill"
+                  >
+                    View Details
+                  </Link>
+                  {isAdmin && (
+                    <>
                       <button
-                        className="btn-gym-danger btn-sm flex-fill"
-                        onClick={() => handleDelete(p.fitnessProgramId)}
+                        className="btn-gym-outline btn-sm flex-fill"
+                        onClick={() => setModal(p)}
                       >
-                        Deactivate
+                        Edit
                       </button>
-                    )}
-                  </div>
-                )}
+                      {p.isActive && (
+                        <button
+                          className="btn-gym-danger btn-sm flex-fill"
+                          onClick={() => handleDelete(p.fitnessProgramId)}
+                        >
+                          Deactivate
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           ))}
