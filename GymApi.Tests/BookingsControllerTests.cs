@@ -198,6 +198,37 @@ public class BookingsControllerTests
     }
 
     [Fact]
+    public async Task CreateBooking_AfterCancellingSameSession_ReusesTheCancelledRowAndReturnsCreated()
+    {
+        using var dbContext = CreateDbContext();
+        var (_, _, session) = await SeedSessionAsync(dbContext, capacity: 5);
+        var member = await SeedMemberAsync(dbContext);
+
+        var cancelledBooking = new Booking
+        {
+            BookingId = Guid.NewGuid(),
+            UserId = member.UserId,
+            SessionId = session.SessionId,
+            Status = BookingStatus.Cancelled
+        };
+        dbContext.Bookings.Add(cancelledBooking);
+        await dbContext.SaveChangesAsync();
+
+        var controller = new BookingsController(dbContext);
+        SetUser(controller, member.UserId, "Member");
+
+        var result = await controller.CreateBooking(new CreateBookingRequest { SessionId = session.SessionId });
+
+        var created = Assert.IsType<CreatedAtActionResult>(result);
+        var response = Assert.IsType<BookingResponse>(created.Value);
+        Assert.Equal(cancelledBooking.BookingId, response.BookingId);
+        Assert.Equal(BookingStatus.Confirmed, response.Status);
+
+        var bookingCount = await dbContext.Bookings.CountAsync(b => b.UserId == member.UserId && b.SessionId == session.SessionId);
+        Assert.Equal(1, bookingCount);
+    }
+
+    [Fact]
     public async Task CreateBooking_WithOverlappingConfirmedSession_ReturnsConflict()
     {
         using var dbContext = CreateDbContext();
